@@ -1,16 +1,21 @@
 
 
-from Chess import Board, engine, Move
-# import chess.engine
-# import chess.svg
+# from chess import Board, engine, Move
+# # import chess.engine
+# # import chess.svg
+
+import chess
+import chess.engine
 
 # print("hello world")
 
 whiteIsHuman = True
-blackIsHuman = False
+blackIsHuman = True
 cpuTimeLimit = .1
 
-engine = engine.SimpleEngine.popen_uci("stockfish.exe")
+# engine = engine.SimpleEngine.popen_uci("stockfish.exe")
+engine = chess.engine.SimpleEngine.popen_uci("stockfish\stockfish-windows-x86-64-sse41-popcnt.exe")
+
 
 def quitGame():
     engine.quit()
@@ -18,10 +23,7 @@ def quitGame():
 
 def get_human_move():
     while True:
-        if board.turn:
-            player = "white"
-        else:
-            player = "black"
+        player = "white" if board.turn else "black"
 
         #ask for user input until a legal move is selected
         while True:
@@ -40,27 +42,32 @@ def get_human_move():
 
 def get_computer_move():
 
-    result = engine.play(board, engine.Limit(time=cpuTimeLimit))
+    result = engine.play(board, chess.engine.Limit(time=cpuTimeLimit))
     return result.move
 
 
-board = Board()
+board = chess.Board()
 
 
 #playing the game
 
 while not board.is_game_over():
-    move = Move.null
-    if board.turn:
-        if whiteIsHuman:
-            move = get_human_move()
-        else:
-            move = get_computer_move()
+    move = chess.Move.null
+    # if board.turn:
+    #     if whiteIsHuman:
+    #         move = get_human_move()
+    #     else:
+    #         move = get_computer_move()
+    # else:
+    #     if blackIsHuman:
+    #         move = get_human_move()
+    #     else:
+    #         move = get_computer_move()
+
+    if (board.turn and whiteIsHuman) or (not board.turn and blackIsHuman):
+        move = get_human_move()
     else:
-        if blackIsHuman:
-            move = get_human_move()
-        else:
-            move = get_computer_move()
+        move = get_computer_move()
 
 
     if move in board.legal_moves:
@@ -70,10 +77,11 @@ while not board.is_game_over():
     print(board)
     print()
 
-
+# outcome = board.outcome()
+print("game over")
 quitGame()
 
-    # chess.svg.board(board, size=350)
+# chess.svg.board(board, size=350)
 
 
 
