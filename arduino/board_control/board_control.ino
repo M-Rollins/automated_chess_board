@@ -25,10 +25,10 @@ int yHome = 1290;
 int xSafetyLimit = 5000;
 int ySafetyLimit = 4000;
 //(1 step = 0.2mm)
-int squareSize = 125;
+int squareSize = 140;
 //position of the center of the bottom-right square
-int a1x = 700;
-int a1y = 200;
+int a1x = 100;
+int a1y = 15;
 
 //indicated wheter the machine knows where it is
 boolean isHomed;
@@ -38,7 +38,7 @@ unsigned long t;
 unsigned long lastTime;
 
 //for serial communication
-char endMarker = '.';
+char endMarker = ';';
 const byte numChars = 32;
 char receivedChars[32];
 boolean newCommand;
