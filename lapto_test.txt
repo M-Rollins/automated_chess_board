@@ -1,3 +1,0 @@
-words
-editing files on pi
-editing on laptop
