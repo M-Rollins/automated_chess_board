@@ -1,0 +1,11 @@
+H: home x and y axes
+X[coord]: go to x position
+Y[coord]: go to y position
+M[x1][y1][x2][y2]: move from one square to another with the magnet on (each argument should be two digits e.g. M00000101)
+	-(0, 0) is the bottom-right-most usable location
+	-(14, 9) is the top-right limit
+	-(4, 1) is a1
+
+
+*not implemented*
+B: report bounds (steps and squares)
