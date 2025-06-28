@@ -11,7 +11,18 @@ boolean xForward = LOW;
 boolean yForward = LOW;
 
 //delay between steps in microseconds (sets max speed)
-int stepDelay = 2000;
+//int stepDelay = 2000;
+unsigned long xStepDelay, yStepDelay;
+//int MAX_STEP_DELAY = 10000;
+//int MIN_STEP_DELAY = 2000;
+//int DELAY_INCREMENT = 10;
+
+// steps per second
+float vx, vy;
+float V_MIN = 200;
+float V_MAX = 500;
+//steps/s^2
+float ACCEL = 500;
 
 //position information
 int x;
@@ -35,7 +46,7 @@ boolean isHomed;
 
 
 unsigned long t;
-unsigned long lastTime;
+unsigned long xLastTime, yLastTime;
 
 //for serial communication
 char endMarker = ';';
@@ -83,17 +94,6 @@ class Stepper
     digitalWrite(stepPin, LOW);
     delayMicroseconds(pulseWidthMicroseconds);
   }
-  
-//  void turn(int steps)
-//  {
-//    digitalWrite(dirPin, (steps > 0) == forward);
-//
-//    steps = abs(steps);
-//    for(int i = 0; i < steps; i++)
-//    {
-//      pulse();
-//    }
-//  }
 };
 
 
@@ -124,7 +124,8 @@ void setup() {
 
   isHomed = false;
 
-  lastTime = micros();
+  xLastTime = micros();
+  yLastTime = xLastTime;
 
 
 
@@ -134,27 +135,10 @@ void setup() {
 }
 
 void loop() {
-  // put your main code here, to run repeatedly:
-//  Serial.println("x forward");
-//  xMotor.turn(600);
-//  delay(1000);
-//  
-//  Serial.println("x reverse");
-//  xMotor.turn(-600);
-//  delay(1000);
-//
-//  Serial.println("y forward");
-//  yMotor.turn(600);
-//  delay(1000);
-//  
-//  Serial.println("y reverse");
-//  yMotor.turn(-600);
-//  delay(5000);
-
-
   //check if a command has been recieved over serial and act on it
   receiveCommand();
   parseCommand();
+  delay(100);
 
 
   //periodically move the motors
@@ -200,7 +184,9 @@ void homeXY(){
   Serial.println("homing");
 
   //x
-  lastTime = micros();
+  float lastTime = micros();
+  int stepDelay = 2000;
+  
   while(!digitalRead(xLimSwitch)){
     t = micros();
     if(t - lastTime > stepDelay){
@@ -397,13 +383,28 @@ void moveToTarget(){
     return;
   }
 
+  vx = V_MIN;
+  vy = V_MAX;
+  boolean xRampUp = true;
+  boolean yRampUp = true;
+
+  
+//  int i = 0;
+  
   
   while(!(x == xTarget && y == yTarget)){
+    xStepDelay = 1000000 / vx;
+    yStepDelay = 1000000 / vy;
+
+    
+//    if (i == 0) {Serial.print(vx); Serial.print('\t'); Serial.println(xStepDelay);}
+//    i = (i + 1) % 10;
+    
     //TODO: overflow protection
     t = micros();
-    if(t - lastTime >= stepDelay){
+    if(t - xLastTime >= xStepDelay){
       //update the time, but avoid sending many steps in quick succession if there is a delay
-      while(t - lastTime >= stepDelay) {lastTime += stepDelay;};
+      while(t - xLastTime >= xStepDelay) {xLastTime += xStepDelay;};
       if(x < xTarget){
         xMotor.step(true);
         x++;
@@ -411,7 +412,32 @@ void moveToTarget(){
         xMotor.step(false);
         x--;
       }
+      if(digitalRead(xLimSwitch)){
+        x = xHome;
+      }
       
+      //acceleration
+      if(xRampUp){
+        vx += ACCEL * xStepDelay/1000000.;
+        if(vx >= V_MAX) {
+          vx = V_MAX;
+          xRampUp = false;
+        }
+      }
+      // decelerate down to minimum speed as the destination approaches
+      float stoppingDist = 1. / (2*ACCEL) * (vx*vx - V_MIN*V_MIN);
+      if(abs(x - xTarget) <= stoppingDist){
+        if(xRampUp){Serial.print(stoppingDist); Serial.println("\tdecelerating");}
+        vx = max(vx - ACCEL * xStepDelay/1000000., V_MIN);
+        xRampUp = false;
+        
+      }
+      
+    }
+
+    // Y
+    if(t - yLastTime >= yStepDelay){
+      while(t - yLastTime >= yStepDelay) {yLastTime += yStepDelay;}
       if(y < yTarget){
         yMotor.step(true);
         y++;
@@ -419,14 +445,12 @@ void moveToTarget(){
         yMotor.step(false);
         y--;
       }
-  
-  
-      if(digitalRead(xLimSwitch)){
-        x = xHome;
-      }
+      
       if(digitalRead(yLimSwitch)){
         y = yHome;
       }
+
+      vy = min(vy + ACCEL * yStepDelay/1000000., V_MAX);
     }
 
     
