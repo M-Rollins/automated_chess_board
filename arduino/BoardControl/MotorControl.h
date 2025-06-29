@@ -11,14 +11,17 @@ class StepperMotor
 {
   private: 
     static const int PULSE_WIDTH_MICROSECONDS;  //duration of pulse to trigger step pin
-    int stepPin;
-    int dirPin;
+    int stepPin;  //pin sending step commands
+    int dirPin; //pin which controls teh direction
+    int ms1;  //microstepping pins
+    int ms2;
     boolean forward;  //signal to direction pin to move in the positive direction
   
   public:
-    StepperMotor(int s, int d, boolean f);
+    StepperMotor(int s, int d, int msPin1, int msPin2, boolean f);
     StepperMotor();
-    void step(boolean d);
+    boolean setMicrostepping(int steps); //1 for full stepping, 2/4/8/ for half/quarter/eigth stepping. returns trus if successful
+    void step(boolean d); //move the motor one step (positive direction if d is true)
 };
 
 
@@ -29,8 +32,8 @@ class Axis
 {
   private:
     StepperMotor motor; //motor which drives the axis
-    int pos;  //current position (steps)
-    int target; //target position
+    float pos;  //current position (full steps)
+    float target; //target position
     int limitPos; //position of limit switch (assumed to be on upper limit of motion)
     int safetyLimit;  //value greater than limitPos that will trigger an error if the limit switch fails to trigger (broken switch, stalled motor, etc.)
     int limSwitch;  //pin associated with limit switch (should be pulled LOW when switch is triggered)
@@ -38,6 +41,7 @@ class Axis
     float v;  //speed (steps/s)
     unsigned long stepDelay;  //period between steps(us)
     unsigned long lastTime;
+    int microstepping;  //number of microsteps each full step is broken into (1, 2, 4 or 8)
 
   public:
     boolean isHomed;  //flag for if the axis has a valid home position
@@ -49,11 +53,9 @@ class Axis
     Axis(StepperMotor m, int lp, int switchPin);
     Axis();
 
-    //runs to the limits switch, then returns true. Returns false if there is an error that prevents homing
-    boolean homeAxis();
-  
-    //set position to move to
-    void setTarget(int t);
+    void setMicrostepping(int steps); //sets the microstepping resolution for the assigned motor and updates the motion commands accordingly
+    boolean homeAxis(); //runs to the limits switch, then returns true. Returns false if there is an error that prevents homing
+    void setTarget(int t);  //set position to move to
   
     /* take steps as appropriate to rach target position
      * this function should be called as often as possible fro smooth motion

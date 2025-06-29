@@ -5,23 +5,51 @@
 #include "MotorControl.h"
 
 const int StepperMotor::PULSE_WIDTH_MICROSECONDS = 5;
-const float Axis::V_MIN = 100;  // steps per second
+const float Axis::V_MIN = 50;  // full steps per second
 const float Axis::V_MAX = 1000;
-const float Axis::HOME_SPEED = 350;
-const float Axis::ACCEL = 1500;  //steps/s^2
+const float Axis::HOME_SPEED = 400;
+const float Axis::ACCEL = 1000;  //full steps/s^2
 
 //=======================================================
 StepperMotor::StepperMotor(){}
-StepperMotor::StepperMotor(int s, int d, boolean f)
-{
+StepperMotor::StepperMotor(int s, int d, int msPin1, int msPin2, boolean f){
   stepPin = s;
   dirPin = d;
+  ms1 = msPin1;
+  ms2 = msPin2;
   pinMode(stepPin, OUTPUT);
   pinMode(dirPin, OUTPUT);
+  pinMode(ms1, OUTPUT);
+  pinMode(ms2, OUTPUT);
+  setMicrostepping(1);
   
   forward = f;
   digitalWrite(stepPin, LOW);
   digitalWrite(dirPin, forward);
+}
+
+boolean StepperMotor::setMicrostepping(int steps){
+  switch(steps){
+    case 1:
+      digitalWrite(ms1, LOW);
+      digitalWrite(ms2, LOW);
+      return true;
+    case 2:
+      digitalWrite(ms1, HIGH);
+      digitalWrite(ms2, LOW);
+      return true;
+    case 4:
+      digitalWrite(ms1, LOW);
+      digitalWrite(ms2, HIGH);
+      return true;
+    case 8:
+      digitalWrite(ms1, HIGH);
+      digitalWrite(ms2, HIGH);
+      return true;
+    default:
+      Serial.println("Invalid microstep resolution. Only values of 1, 2, 4, and 8 are valid.");
+      return false;    
+  }
 }
 
 void StepperMotor::step(boolean d){
@@ -44,6 +72,15 @@ Axis::Axis(StepperMotor m, int lp, int switchPin){
   v = 0;
   isHomed = false;
   pinMode(limSwitch, INPUT_PULLUP);
+  setMicrostepping(1);
+}
+
+void Axis::setMicrostepping(int steps){
+  if(motor.setMicrostepping(steps)){
+    microstepping = steps;
+  }else{
+    Serial.println("error setting microstepping resolution");
+  }
 }
 
 void Axis::setTarget(int t){
@@ -51,12 +88,13 @@ void Axis::setTarget(int t){
 }
 
 boolean Axis::atTarget(){
-  return pos == target && v ==0;
+//  return pos == target && v == 0;
+  return pos == target;
 }
 
 boolean Axis::homeAxis(){
   float lastTime = micros();
-  stepDelay = 1000000 / HOME_SPEED;
+  stepDelay = 1000000 / (HOME_SPEED * microstepping);
 
   //move the axis until reaching the limit switch
   while(!digitalRead(limSwitch)){
@@ -65,7 +103,7 @@ boolean Axis::homeAxis(){
       //update the time, but avoid sending many steps in quick succession if there is a delay
       while(t - lastTime >= stepDelay) {lastTime += stepDelay;};
       motor.step(true);
-      pos++;
+      pos += 1./microstepping;
 
       //stop the program if the limit switch is not detected
       if(pos >= safetyLimit){
@@ -83,16 +121,17 @@ boolean Axis::homeAxis(){
 
 
 void Axis::updateAxis(){
-  if(!isHomed){
-    Serial.println("no valid home position");
+  //don't move without knowing where the axis is
+  if(!isHomed || pos == target){
     return;
   }
   
-  //stop moving when the target is reached
-  if(pos == target){
-    v = 0;
-    return;
-  }else if(v == 0){
+//  //stop moving when the target is reached
+//  if(pos == target){
+//    v = 0;
+//    return;
+//  }else 
+  if(v == 0){
     // when the motor is stopped and gets a new target position, start moving
     v = V_MIN;
     rampUp = true;
@@ -101,7 +140,7 @@ void Axis::updateAxis(){
   }
   
   //move the motor
-  stepDelay = 1000000. / v;
+  stepDelay = 1000000 / (v * microstepping);
 
   //TODO: overflow protection? (rolls over every ~1hr)
   unsigned long t = micros();
@@ -110,10 +149,10 @@ void Axis::updateAxis(){
     while(t - lastTime >= stepDelay) {lastTime += stepDelay;};
     if(pos < target){
       motor.step(true);
-      pos++;
+      pos += 1./microstepping;
     }else if (pos > target){
       motor.step(false);
-      pos--;
+      pos -= 1./microstepping;
     }
     //check the limit swicth after each step
     if(digitalRead(limSwitch)){
@@ -134,5 +173,10 @@ void Axis::updateAxis(){
       v = max(v - ACCEL * stepDelay/1000000., V_MIN);
       rampUp = false;
     }
+  }
+
+  ///
+  if(pos == target){
+    v = 0;
   }
 }

@@ -3,6 +3,10 @@ int xStep = 5;
 int xDir = 4;
 int yStep = 7;
 int yDir = 6;
+int xms1 = 10;
+int xms2 = 9;
+int yms1 = 12;
+int yms2 = 11;
 int xLimSwitch = 2;
 int yLimSwitch = 3;
 int magnet = 8;
@@ -66,8 +70,10 @@ void setup() {
   Serial.begin(9600);
   newCommand = false;
 
-  xMotor = StepperMotor(xStep, xDir, xForward);
-  yMotor = StepperMotor(yStep, yDir, yForward);
+  xMotor = StepperMotor(xStep, xDir, xms1, xms2, xForward);
+  yMotor = StepperMotor(yStep, yDir, yms1, yms2, yForward);
+  xMotor.setMicrostepping(2);
+  yMotor.setMicrostepping(2);
   x = Axis(xMotor, xHome, xLimSwitch);
   y = Axis(yMotor, yHome, yLimSwitch);
 
@@ -99,6 +105,8 @@ void loop() {
       x.updateAxis();
       y.updateAxis();
     }
+  }else if(!(x.atTarget() && y.atTarget())){
+    Serial.println("no valid home position");
   }
   
   
@@ -214,7 +222,7 @@ int getNum(){
       break;
     }
   }
-  Serial.println(numStr);
+//  Serial.println(numStr);
   return(numStr.toInt());
 }
 
