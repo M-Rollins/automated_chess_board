@@ -1,0 +1,6 @@
+	As of 2025/08/16, works with:
+Board: "Arduino Nano"
+Processor: "ATmega328P (Old Bootloader)"
+Programmer: "AVR ISP"
+
+Driver (Ports>USB-Serial CH340): version 3.4.2014.8

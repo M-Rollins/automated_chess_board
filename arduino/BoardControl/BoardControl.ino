@@ -11,43 +11,54 @@ int xLimSwitch = 2;
 int yLimSwitch = 3;
 int magnet = 8;
 
-boolean xForward = LOW;
-boolean yForward = LOW;
+const byte PAWN = 1;
+const byte KNIGHT = 2;
+const byte BISHOP = 3;
+const byte ROOK = 4;
+const byte QUEEN = 5;
+const byte KING = 6;
 
-//delay between steps in microseconds (sets max speed)
-//int stepDelay = 2000;
-unsigned long xStepDelay, yStepDelay;
-//int MAX_STEP_DELAY = 10000;
-//int MIN_STEP_DELAY = 2000;
-//int DELAY_INCREMENT = 10;
+const boolean xForward = LOW;
+const boolean yForward = LOW;
+const byte MICROSTEPPING = 4;
 
-//// steps per second
-//float vx, vy;
-//float V_MIN = 200;
-//float V_MAX = 500;
-////steps/s^2
-//float ACCEL = 500;
-
-////position information
-//int x;
-//int y;
-//int xTarget;
-//int yTarget;
 //position of limit switches (steps, 0 = minimum)
-int xHome = 2100;
-int yHome = 1290;
-////error if position values exceed these biouds during homing
-//int xSafetyLimit = 5000;
-//int ySafetyLimit = 4000;
+const int xHome = 2100;
+const int yHome = 1290;
+
 //(1 step = 0.2mm)
-int squareSize = 140;
+const int squareSize = 140;
 //position of the center of the bottom-right square
-int a1x = 100;
-int a1y = 15;
+const int a1x = 100;
+const int a1y = 15;
 
-//indicated wheter the machine knows where it is
-//boolean isHomed;
-
+const int boardWidth = 15;
+const int boardHeight = 10;
+int boardState[boardHeight][boardWidth];
+const int STARTING_POSITION[boardHeight][boardWidth] = {
+  {0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0},
+  {0, 0, 0, 0, -ROOK, -KNIGHT, -BISHOP, -QUEEN, -KING, -BISHOP, -KNIGHT, -ROOK, 0, 0, 0},
+  {0, 0, 0, 0, -PAWN, -PAWN, -PAWN, -PAWN, -PAWN, -PAWN, -PAWN, -PAWN, 0, 0, 0},
+  {0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0},
+  {0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0},
+  {0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0},
+  {0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0},
+  {0, 0, 0, 0, PAWN, PAWN, PAWN, PAWN, PAWN, PAWN, PAWN, PAWN, 0, 0, 0},
+  {0, 0, 0, 0, ROOK, KNIGHT, BISHOP, QUEEN, KING, BISHOP, KNIGHT, ROOK, 0, 0, 0},
+  {0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0}
+};
+const int EMPTY_POSITION[boardHeight][boardWidth] = {
+  {0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0},
+  {ROOK, PAWN, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, -ROOK, PAWN},
+  {KNIGHT, PAWN, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, -KNIGHT, PAWN},
+  {BISHOP, PAWN, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, -BISHOP, PAWN},
+  {KING, PAWN, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, -KING, PAWN},
+  {QUEEN, PAWN, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, -QUEEN, PAWN},
+  {BISHOP, PAWN, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, -BISHOP, PAWN},
+  {KNIGHT, PAWN, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, -KNIGHT, PAWN},
+  {ROOK, PAWN, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, -ROOK, PAWN},
+  {0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0},
+};
 
 unsigned long t;
 unsigned long xLastTime, yLastTime;
@@ -56,40 +67,40 @@ unsigned long xLastTime, yLastTime;
 char endMarker = ';';
 const byte numChars = 32;
 char receivedChars[32];
+byte charIdx; //indicates the next recieved character to parse
+byte msgLen;
 boolean newCommand;
 
 
 #include "MotorControl.h"
 
-//StepperMotor xMotor = StepperMotor(xStep, xDir, xForward);
-//StepperMotor yMotor = StepperMotor(yStep, yDir, yForward);
 StepperMotor xMotor;
 StepperMotor yMotor;
 Axis x, y;
 void setup() {
   Serial.begin(9600);
-  newCommand = false;
+  Serial.println("Initializing...");
+  newCommand = false;newCommand = false;
+  
+  //sanity check
+  if (a1x + (boardWidth-1) * squareSize > xHome || a1y + (boardHeight-1) * squareSize > yHome) {
+    Serial.println("Error: square count is too big or board is too small");
+    while (true) {}
+  }
 
   xMotor = StepperMotor(xStep, xDir, xms1, xms2, xForward);
   yMotor = StepperMotor(yStep, yDir, yms1, yms2, yForward);
-  xMotor.setMicrostepping(2);
-  yMotor.setMicrostepping(2);
+  xMotor.setMicrostepping(MICROSTEPPING);
+  yMotor.setMicrostepping(MICROSTEPPING);
   x = Axis(xMotor, xHome, xLimSwitch);
   y = Axis(yMotor, yHome, yLimSwitch);
-
-//  pinMode(xLimSwitch, INPUT_PULLUP);
-//  pinMode(yLimSwitch, INPUT_PULLUP);
-  pinMode(magnet, OUTPUT);
-  digitalWrite(magnet, LOW);
-
-
   x.setTarget(0);
   y.setTarget(0);
-
-//  isHomed = false;
-
-//  delay(3000);
-//  homeXY();
+  
+  pinMode(magnet, OUTPUT);
+  digitalWrite(magnet, LOW);
+  initializeBoard(1);
+  
   Serial.println("ready");
 }
 
@@ -100,164 +111,156 @@ void loop() {
   delay(100);
 
   //move
-  if(x.isHomed && y.isHomed){
-    while(!(x.atTarget() && y.atTarget())){
-      x.updateAxis();
-      y.updateAxis();
-    }
-  }else if(!(x.atTarget() && y.atTarget())){
-    Serial.println("no valid home position");
-  }
-  
-  
-  
+//  moveAxes();
 }
 
 
-
-
-void homeXY(){
-  Serial.println("homing");
-
-  //x
-  if(x.homeAxis()){
-    Serial.println("X axis homed");
-  }else{
-    Serial.println("Error homing X axis");
-    while(true){}
-  }
-
-  delay(500);
-  
-  //y
-  if(y.homeAxis()){
-    Serial.println("Y axis homed");
-  }else{
-    Serial.println("Error homing Y axis");
-    while(true){}
-  }
-  
-  //
-  delay(500);
-  x.setTarget(xHome - 20);
-  y.setTarget(yHome - 20);
-
-//  moveToTarget();
-}
-
-
-
-void receiveCommand(){
+// read from the serial pqueue until it is empty or a line terminateor is recieved
+void receiveCommand() {
   static byte ndx = 0;
   char rc;
-  
-  while (Serial.available() > 0 && newCommand == false) {
-      rc = Serial.read();
 
-      if (rc != endMarker) {
-          receivedChars[ndx] = rc;
-          ndx++;
-          if (ndx >= numChars) {
-              ndx = numChars - 1;
-          }
+  while (Serial.available() > 0 && newCommand == false) {
+    rc = Serial.read();
+
+    if (rc != endMarker) {
+      receivedChars[ndx] = rc;
+      ndx++;
+      if (ndx >= numChars) {
+        ndx = numChars - 1;
       }
-      else {
-          receivedChars[ndx] = '\0'; // terminate the string
-          ndx = 0;
-          newCommand = true;
-      }
+    }
+    else {
+      receivedChars[ndx] = '\0'; // terminate the string
+      msgLen = ndx + 1;
+      ndx = 0;
+      charIdx = 0;
+      newCommand = true;
+    }
   }
 }
 
-
-void parseCommand(){
-  if(newCommand){
+// check if a command has been recieved and act on it
+void parseCommand() {
+  if (newCommand) {
     Serial.print("received command: ");
     Serial.println(receivedChars);
     int n;
 
     //first character determines the type of command
-    switch(receivedChars[0]){
+    switch (receivedChars[charIdx++]) {
       case 'H': //home axes
         homeXY();
         break;
       case 'X': //go to x position
         n = getNum();
-        if(n >= 0 and n <= xHome){
+        if (n >= 0 and n <= xHome) {
           x.setTarget(n);
-        }else{
+          moveAxes();
+        } else {
           Serial.println("X position out of bounds");
         }
         break;
       case 'Y': //go to y position
         n = getNum();
-        if(n >= 0 and n <= yHome){
+        if (n >= 0 and n <= yHome) {
           y.setTarget(n);
-        }else{
+          moveAxes();
+        } else {
           Serial.println("Y position out of bounds");
         }
         break;
 
-      case 'M': //go to square
+      case 'M': //Make move
         parseMove();
         break;
-
+      case 'I': // initialize board state
+        initializeBoard(getNum());
+        break;
       default:
         Serial.println("invalid command");
-      break;
+        break;
     }
-    
+    ///
     newCommand = false;
   }
 }
 
 
-//search the received line for an integer (starting at the second character)
-int getNum(){
+// read the next number from the available serial data
+int getNum() {
   String numStr = "";
-  for(int i = 1; i < numChars; i ++){
-    if(isDigit(receivedChars[i])){
-      numStr += receivedChars[i];
-    }else{
+  char c;
+
+  //skip whitespace
+  while (charIdx < msgLen && receivedChars[charIdx] == ' ') {
+    charIdx++;
+  }
+
+  // read the next set of consecutive digit characters
+  while (charIdx < msgLen) {
+    c = receivedChars[charIdx++];
+    if (isDigit(c)) {
+      numStr += c;
+    } else {
       break;
     }
   }
-//  Serial.println(numStr);
-  return(numStr.toInt());
+  // no number available: return -1
+  if (numStr.length() == 0) {
+    return -1;
+  }
+//  Serial.print("\tstr: ");
+//  Serial.print(numStr);
+//  Serial.print("\tint: ");
+//  Serial.println(numStr.toInt());
+  return (numStr.toInt());
 }
 
 
-void parseMove(){
-  int coords[4];
-  int cIdx = 0;
-  int n = 0;
+void homeXY() {
+  Serial.println("homing");
+
+  //x
+  if (x.homeAxis()) {
+    Serial.println("X axis homed");
+  } else {
+    Serial.println("Error homing X axis");
+    while (true) {}
+  }
+  delay(500);
   
-  String numStr = "";
-  for(int i = 1; i < numChars && cIdx < 4; i ++){
-    if(isDigit(receivedChars[i])){
-      numStr += receivedChars[i];
-      if(++n == 2){
-        coords[cIdx++] =  numStr.toInt();
-        n = 0;
-        numStr = "";
-      }
-    }else{
+  //y
+  if (y.homeAxis()) {
+    Serial.println("Y axis homed");
+  } else {
+    Serial.println("Error homing Y axis");
+    while (true) {}
+  }
+  delay(500);
+  
+  x.setTarget(xHome - 20);
+  y.setTarget(yHome - 20);
+  moveAxes();
+}
+
+
+void parseMove() {
+  int coords[4];
+  
+  for (int i = 0; i < 4; i ++) {
+    coords[i] = getNum();
+    if (coords[i] == -1) {
       Serial.println("Invalid move command");
       return;
     }
   }
-  if(cIdx < 4){
-    Serial.println("Invalid move command");
-      return;
-  }
-
+  
   makeMove(coords[0], coords[1], coords[2], coords[3]);
 }
 
-
-
 //move a piece form one square to another
-void makeMove(int f0, int r0, int f1, int r1){
+void makeMove(int f0, int r0, int f1, int r1) {
   goToSquare(f0, r0);
   delay(500);
   digitalWrite(magnet, HIGH);
@@ -265,19 +268,117 @@ void makeMove(int f0, int r0, int f1, int r1){
   goToSquare(f1, r1);
   delay(500);
   digitalWrite(magnet, LOW);
-  
 }
 
 //go to file f, square r (a1 = (0, 0))
-void goToSquare(int f, int r){
+void goToSquare(int f, int r) {
+  Serial.print("Moving to square (");
+  Serial.print(f);
+  Serial.print(", ");
+  Serial.print(r);
+  Serial.println(")");
+  
   int xSquare = f * squareSize + a1x;
   int ySquare = r * squareSize + a1y;
-  if(xSquare < 0 || xSquare > xHome || ySquare < 0 || ySquare > yHome){
+  if (xSquare < 0 || xSquare > xHome || ySquare < 0 || ySquare > yHome) {
     Serial.println("Square out of bounds");
     return;
   }
 
   x.setTarget(xSquare);
   y.setTarget(ySquare);
+  moveAxes();
+}
+
+//move to the target position
+void moveAxes(){
+  if (x.isHomed && y.isHomed) {
+    while (!(x.atTarget() && y.atTarget())) {
+      x.updateAxis();
+      y.updateAxis();
+    }
+  } else if (!(x.atTarget() && y.atTarget())) {
+    Serial.println("no valid home position");
+  }
+}
+
+// initialize the board's position memory
+void initializeBoard(int state){
+  switch(state){
+    case 0:
+      Serial.println("Empty position");
+      memcpy(boardState, EMPTY_POSITION, sizeof(EMPTY_POSITION));
+      break;
+    case 1:
+      Serial.println("Starting position");
+      memcpy(boardState, STARTING_POSITION, sizeof(STARTING_POSITION));
+      break;
+    default:
+      Serial.println("Invalid board state command");
+  }
+}
+
+// find the shortest path betweeen two sqares, avoiding occupied squares
+const int ORTH_COST = 1;
+const int DIAG_COST = 1;
+int* findPath(int f0, int r0, int f1, int r1){
+  int cost[boardHeight][boardWidth] = {32767};
+  int newCost[boardHeight][boardWidth] = {32767};
+  cost[r0][f0] = 0;
+  newCost[r0][f0] = 0;
+
+  for(int iter = 0; iter < 100; iter++){
+    for(int i = 0; i < boardHeight; i ++){
+      for(int j = 0; j < boardWidth; j ++){
+        //consider orthogonal moves
+        int c = cost[i][j] + ORTH_COST;
+        if(i > 0 && boardState[i-1][j] == 0 && c < cost[i-1][j]){newCost[i-1][j] = c;}
+        if(i < boardHeight-1 && boardState[i+1][j] == 0 && c < cost[i+1][j]){newCost[i+1][j] = c;}
+        if(j > 0 && boardState[i][j-1] == 0 && c < cost[i][j-1]){newCost[i][j-1] = c;}
+        if(j < boardWidth-1 && boardState[i][j+1] == 0 && c < cost[i][j+1]){newCost[i][j+1] = c;}
+
+        //consider diagonal moves
+        c = cost[i][j] + DIAG_COST;
+        if(i > 0 && j > 0 && boardState[i-1][j-1] == 0 && c < cost[i-1][j-1]){newCost[i-1][j-1] = c;}
+        if(i > 0 && j < boardWidth-1 && boardState[i-1][j+1] == 0 && c < cost[i-1][j+1]){newCost[i-1][j+1] = c;}
+        if(i < boardHeight-1 && j > 0 && boardState[i+1][j-1] == 0 && c < cost[i+1][j-1]){newCost[i+1][j-1] = c;}
+        if(i < boardHeight-1 && j < boardWidth-1 && boardState[i+1][j+1] == 0 && c < cost[i+1][j+1]){newCost[i+1][j+1] = c;}
+      }
+    }
+    
+      //check if the destination has been found
+      //TODO: doesn't guaruntee minimum cost because of if orthogonal & diagonal are different. Iterate until newCost doesn't change?
+      if(newCost[r1][f1] < cost[r1][f1]){
+        //trace the path
+        int pathLen = newCost[r1][f1];
+        int path[pathLen][2];
+
+        int r = r1;
+        int f = f1;
+
+        for(int i = pathLen-1; i >= 0; i ++){
+//          path[i] = new int[] {r, f};
+//          path[i] = {r, f};
+          path[i][0] = r;
+          path[i][1] = f;
+
+          //check orthogonal moves
+          int c = newCost[r][f];
+          if(r > 0 && newCost[r-1][f] < c){r--;}
+          else if(r < boardWidth-1 && newCost[r+1][f] < c){r++;}
+          else if(f > 0 && newCost[r][f-1] < c){f--;}
+          else if(f < boardHeight-1 && newCost[r][f+1] < c){f++;}
+          //check diagonal moves
+          else if(r > 0 && f > 0 && newCost[r-1][f-1] < c){r--; f--;}
+          
+        }
+      }
+
+      //update costs of all squares at once
+      memcpy(cost, newCost, sizeof(cost));
+  }
+  Serial.println("Failed to find a path");
+  
+  return {};
   
 }

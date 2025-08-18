@@ -5,8 +5,8 @@
 #include "MotorControl.h"
 
 const int StepperMotor::PULSE_WIDTH_MICROSECONDS = 5;
-const float Axis::V_MIN = 50;  // full steps per second
-const float Axis::V_MAX = 1000;
+const float Axis::V_MIN = 50;  // full steps per second (1 step = 0.2mm)
+const float Axis::V_MAX = 800;
 const float Axis::HOME_SPEED = 400;
 const float Axis::ACCEL = 1000;  //full steps/s^2
 
@@ -170,7 +170,7 @@ void Axis::updateAxis(){
     // decelerate down to minimum speed as the destination approaches
     float stoppingDist = 1. / (2*ACCEL) * (v*v - V_MIN*V_MIN);
     if(abs(pos - target) <= stoppingDist){
-      v = max(v - ACCEL * stepDelay/1000000., V_MIN);
+      v = max(float(v - ACCEL * stepDelay/1000000.), V_MIN);
       rampUp = false;
     }
   }
