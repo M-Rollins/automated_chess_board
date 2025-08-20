@@ -11,13 +11,13 @@ M[x1][y1][x2][y2]: move from one square to another with the magnet on (e.g. M00 
 	-(0, 0) is the bottom-right-most usable location
 	-(14, 9) is the top-right limit
 	-(4, 1) is a1
-
-
-*not implemented*
-B: report bounds (steps and squares)
 I: initialize board state (without moving pieces)
 	I00: empty position (all pieces stowed on the sides)
 	I01: starting position
+B: print board state
+
+*not implemented*
+L: report bounds (steps and squares)
 S: set up board (move pieces into position)
 	S00: empty position
 	S01: starting position

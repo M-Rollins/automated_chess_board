@@ -1,22 +1,22 @@
 //pin definitions
-int xStep = 5;
-int xDir = 4;
-int yStep = 7;
-int yDir = 6;
-int xms1 = 10;
-int xms2 = 9;
-int yms1 = 12;
-int yms2 = 11;
-int xLimSwitch = 2;
-int yLimSwitch = 3;
-int magnet = 8;
+byte xStep = 5;
+byte xDir = 4;
+byte yStep = 7;
+byte yDir = 6;
+byte xms1 = 10;
+byte xms2 = 9;
+byte yms1 = 12;
+byte yms2 = 11;
+byte xLimSwitch = 2;
+byte yLimSwitch = 3;
+byte magnet = 8;
 
-const byte PAWN = 1;
-const byte KNIGHT = 2;
-const byte BISHOP = 3;
-const byte ROOK = 4;
-const byte QUEEN = 5;
-const byte KING = 6;
+const char PAWN = 1;
+const char KNIGHT = 2;
+const char BISHOP = 3;
+const char ROOK = 4;
+const char QUEEN = 5;
+const char KING = 6;
 
 const boolean xForward = LOW;
 const boolean yForward = LOW;
@@ -32,10 +32,10 @@ const int squareSize = 140;
 const int a1x = 100;
 const int a1y = 15;
 
-const int boardWidth = 15;
-const int boardHeight = 10;
-int boardState[boardHeight][boardWidth];
-const int STARTING_POSITION[boardHeight][boardWidth] = {
+const byte boardWidth = 15;
+const byte boardHeight = 10;
+char boardState[boardHeight][boardWidth];
+const char STARTING_POSITION[boardHeight][boardWidth] = {
   {0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0},
   {0, 0, 0, 0, -ROOK, -KNIGHT, -BISHOP, -QUEEN, -KING, -BISHOP, -KNIGHT, -ROOK, 0, 0, 0},
   {0, 0, 0, 0, -PAWN, -PAWN, -PAWN, -PAWN, -PAWN, -PAWN, -PAWN, -PAWN, 0, 0, 0},
@@ -47,7 +47,7 @@ const int STARTING_POSITION[boardHeight][boardWidth] = {
   {0, 0, 0, 0, ROOK, KNIGHT, BISHOP, QUEEN, KING, BISHOP, KNIGHT, ROOK, 0, 0, 0},
   {0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0}
 };
-const int EMPTY_POSITION[boardHeight][boardWidth] = {
+const char EMPTY_POSITION[boardHeight][boardWidth] = {
   {0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0},
   {ROOK, PAWN, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, -ROOK, PAWN},
   {KNIGHT, PAWN, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, -KNIGHT, PAWN},
@@ -70,6 +70,10 @@ char receivedChars[32];
 byte charIdx; //indicates the next recieved character to parse
 byte msgLen;
 boolean newCommand;
+//for move commands following a path
+const byte MAX_PATH_LENGTH = 32;
+byte path[MAX_PATH_LENGTH][2];
+byte pathLen;
 
 
 #include "MotorControl.h"
@@ -177,6 +181,8 @@ void parseCommand() {
       case 'I': // initialize board state
         initializeBoard(getNum());
         break;
+      case 'B':
+        printBoardState();
       default:
         Serial.println("invalid command");
         break;
@@ -260,14 +266,42 @@ void parseMove() {
 }
 
 //move a piece form one square to another
+
 void makeMove(int f0, int r0, int f1, int r1) {
+  //TODO: handle captures
+  //if destination square is occupied:
+  //  identify 'storage' location of captured piece
+  //  remove captured piece
+  //  update board state
+  
+  //find the best route to move the piece without disturbing the board
+  findPath(f0, r0, f1, r1);
+  
+  Serial.print("Following path: ");
+  for(int i = 0; i < pathLen; i ++){
+    Serial.print("(");
+    Serial.print(path[i][0]);
+    Serial.print(", ");
+    Serial.print(path[i][1]);
+    Serial.print(") ");
+  }
+  Serial.println();
+
   goToSquare(f0, r0);
   delay(500);
   digitalWrite(magnet, HIGH);
   delay(500);
-  goToSquare(f1, r1);
+//  goToSquare(f1, r1);
+  for(int i = 1; i < pathLen; i ++){
+    goToSquare(path[i][0], path[i][1]);
+  }
   delay(500);
   digitalWrite(magnet, LOW);
+
+
+  //update board state
+  boardState[r1][f1] = boardState[r0][f0];
+  boardState[r0][f0] = 0;
 }
 
 //go to file f, square r (a1 = (0, 0))
@@ -321,7 +355,7 @@ void initializeBoard(int state){
 // find the shortest path betweeen two sqares, avoiding occupied squares
 const int ORTH_COST = 1;
 const int DIAG_COST = 1;
-int* findPath(int f0, int r0, int f1, int r1){
+void findPath(int f0, int r0, int f1, int r1){
   int cost[boardHeight][boardWidth] = {32767};
   int newCost[boardHeight][boardWidth] = {32767};
   cost[r0][f0] = 0;
@@ -349,36 +383,65 @@ int* findPath(int f0, int r0, int f1, int r1){
       //check if the destination has been found
       //TODO: doesn't guaruntee minimum cost because of if orthogonal & diagonal are different. Iterate until newCost doesn't change?
       if(newCost[r1][f1] < cost[r1][f1]){
-        //trace the path
-        int pathLen = newCost[r1][f1];
-        int path[pathLen][2];
-
+        //trace the path from the destination square back to the starting square
+        pathLen = newCost[r1][f1];
         int r = r1;
         int f = f1;
 
         for(int i = pathLen-1; i >= 0; i ++){
-//          path[i] = new int[] {r, f};
-//          path[i] = {r, f};
           path[i][0] = r;
           path[i][1] = f;
 
-          //check orthogonal moves
+          //find the direction in which the cost function decreases
           int c = newCost[r][f];
+          //check orthogonal moves
           if(r > 0 && newCost[r-1][f] < c){r--;}
           else if(r < boardWidth-1 && newCost[r+1][f] < c){r++;}
           else if(f > 0 && newCost[r][f-1] < c){f--;}
           else if(f < boardHeight-1 && newCost[r][f+1] < c){f++;}
           //check diagonal moves
           else if(r > 0 && f > 0 && newCost[r-1][f-1] < c){r--; f--;}
-          
+          else if(r < boardWidth-1 && f  > 0 && newCost[r+1][f-1] < c){r++; f--;}
+          else if(r > 0 && f < boardHeight-1 && newCost[r-1][f+1] < c){r--; f++;}
+          else if(r > boardWidth-1 && f < boardHeight-1 && newCost[r+1][f+1] < c){r++; f++;}
+          else{
+            //something has gone wrong
+            Serial.println("Failed to find a path");
+            pathLen = 0;
+            return;
+          }
         }
+        return;
       }
 
       //update costs of all squares at once
       memcpy(cost, newCost, sizeof(cost));
   }
   Serial.println("Failed to find a path");
-  
-  return {};
-  
+  pathLen = 0;
+}
+
+//print an ASCII representation of the board state
+void printBoardState(){
+  for(int i = 0; i < boardHeight; i ++){
+    for(int j = 0; j < boardWidth; j ++){
+      switch(boardState[i][j]){
+        case  PAWN: Serial.println('P'); break;
+        case -PAWN: Serial.println('p'); break;
+        case  KNIGHT: Serial.println('N'); break;
+        case -KNIGHT: Serial.println('n'); break;
+        case  BISHOP: Serial.println('B'); break;
+        case -BISHOP: Serial.println('b'); break;
+        case  ROOK: Serial.println('R'); break;
+        case -ROOK: Serial.println('r'); break;
+        case  QUEEN: Serial.println('Q'); break;
+        case -QUEEN: Serial.println('q'); break;
+        case  KING: Serial.println('K'); break;
+        case -KING: Serial.println('k'); break;
+        default: Serial.print('X');
+      }
+      Serial.print(' ');
+    }
+    Serial.println();
+  }
 }
