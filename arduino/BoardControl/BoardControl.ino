@@ -265,8 +265,8 @@ void parseMove() {
   makeMove(coords[0], coords[1], coords[2], coords[3]);
 }
 
+//TODO: parse long algebreic notation?
 //move a piece form one square to another
-
 void makeMove(int f0, int r0, int f1, int r1) {
   //TODO: handle captures
   //if destination square is occupied:
@@ -292,7 +292,8 @@ void makeMove(int f0, int r0, int f1, int r1) {
   digitalWrite(magnet, HIGH);
   delay(500);
 //  goToSquare(f1, r1);
-  for(int i = 1; i < pathLen; i ++){
+  for(int i = 0; i < pathLen; i ++){
+    //TODO: don't ramp down speed at every square
     goToSquare(path[i][0], path[i][1]);
   }
   delay(500);
@@ -356,12 +357,28 @@ void initializeBoard(int state){
 const int ORTH_COST = 1;
 const int DIAG_COST = 1;
 void findPath(int f0, int r0, int f1, int r1){
-  int cost[boardHeight][boardWidth] = {32767};
-  int newCost[boardHeight][boardWidth] = {32767};
+  int cost[boardHeight][boardWidth];
+  int newCost[boardHeight][boardWidth];
+  for(int i = 0; i < boardHeight; i++){
+    for(int j = 0; j < boardWidth; j ++){
+      cost[i][j] = 32766;
+      newCost[i][j] = 32766;
+    }
+  }
   cost[r0][f0] = 0;
   newCost[r0][f0] = 0;
 
   for(int iter = 0; iter < 100; iter++){
+//    //print cost map
+//    Serial.println("new cost:");
+//    for(int y = 0; y < boardHeight; y++){
+//      for(int x = 0; x < boardWidth; x++){
+//        Serial.print(newCost[y][x]);
+//        Serial.print(" ");
+//      }
+//      Serial.println();
+//    }
+    
     for(int i = 0; i < boardHeight; i ++){
       for(int j = 0; j < boardWidth; j ++){
         //consider orthogonal moves
@@ -379,66 +396,74 @@ void findPath(int f0, int r0, int f1, int r1){
         if(i < boardHeight-1 && j < boardWidth-1 && boardState[i+1][j+1] == 0 && c < cost[i+1][j+1]){newCost[i+1][j+1] = c;}
       }
     }
-    
-      //check if the destination has been found
-      //TODO: doesn't guaruntee minimum cost because of if orthogonal & diagonal are different. Iterate until newCost doesn't change?
-      if(newCost[r1][f1] < cost[r1][f1]){
-        //trace the path from the destination square back to the starting square
-        pathLen = newCost[r1][f1];
-        int r = r1;
-        int f = f1;
 
-        for(int i = pathLen-1; i >= 0; i ++){
-          path[i][0] = r;
-          path[i][1] = f;
+    //check if the destination has been found
+    //TODO: doesn't guaruntee minimum cost because if orthogonal & diagonal are different. Iterate until newCost doesn't change?
+    if(newCost[r1][f1] < cost[r1][f1]){
+      //trace the path from the destination square back to the starting square
+//      Serial.println("tracing path");
+      pathLen = newCost[r1][f1];
+      int r = r1;
+      int f = f1;
 
-          //find the direction in which the cost function decreases
-          int c = newCost[r][f];
-          //check orthogonal moves
-          if(r > 0 && newCost[r-1][f] < c){r--;}
-          else if(r < boardWidth-1 && newCost[r+1][f] < c){r++;}
-          else if(f > 0 && newCost[r][f-1] < c){f--;}
-          else if(f < boardHeight-1 && newCost[r][f+1] < c){f++;}
-          //check diagonal moves
-          else if(r > 0 && f > 0 && newCost[r-1][f-1] < c){r--; f--;}
-          else if(r < boardWidth-1 && f  > 0 && newCost[r+1][f-1] < c){r++; f--;}
-          else if(r > 0 && f < boardHeight-1 && newCost[r-1][f+1] < c){r--; f++;}
-          else if(r > boardWidth-1 && f < boardHeight-1 && newCost[r+1][f+1] < c){r++; f++;}
-          else{
-            //something has gone wrong
-            Serial.println("Failed to find a path");
-            pathLen = 0;
-            return;
-          }
+      for(int i = pathLen-1; i > 0; i--){
+        path[i][0] = f;
+        path[i][1] = r;
+//        Serial.print(r);
+//        Serial.print(" ");
+//        Serial.println(f);
+
+        //find the direction in which the cost function decreases
+        int c = newCost[r][f];
+        //check orthogonal moves
+        if(r > 0 && newCost[r-1][f] < c){r--;}
+        else if(r < boardWidth-1 && newCost[r+1][f] < c){r++;}
+        else if(f > 0 && newCost[r][f-1] < c){f--;}
+        else if(f < boardHeight-1 && newCost[r][f+1] < c){f++;}
+        //check diagonal moves
+        else if(r > 0 && f > 0 && newCost[r-1][f-1] < c){r--; f--;}
+        else if(r < boardWidth-1 && f  > 0 && newCost[r+1][f-1] < c){r++; f--;}
+        else if(r > 0 && f < boardHeight-1 && newCost[r-1][f+1] < c){r--; f++;}
+        else if(r > boardWidth-1 && f < boardHeight-1 && newCost[r+1][f+1] < c){r++; f++;}
+        else{
+          //something has gone wrong
+          Serial.println("Failed to find a path");
+          pathLen = 0;
+          return;
         }
-        return;
       }
+      path[0][0] = f;
+      path[0][1] = r;
+      return;
+    }
 
-      //update costs of all squares at once
-      memcpy(cost, newCost, sizeof(cost));
+    //update costs of all squares at once
+    memcpy(cost, newCost, sizeof(cost));
   }
   Serial.println("Failed to find a path");
   pathLen = 0;
 }
 
 //print an ASCII representation of the board state
+//TODO: rows in boardState are reversed (movement is correct)
 void printBoardState(){
   for(int i = 0; i < boardHeight; i ++){
     for(int j = 0; j < boardWidth; j ++){
       switch(boardState[i][j]){
-        case  PAWN: Serial.println('P'); break;
-        case -PAWN: Serial.println('p'); break;
-        case  KNIGHT: Serial.println('N'); break;
-        case -KNIGHT: Serial.println('n'); break;
-        case  BISHOP: Serial.println('B'); break;
-        case -BISHOP: Serial.println('b'); break;
-        case  ROOK: Serial.println('R'); break;
-        case -ROOK: Serial.println('r'); break;
-        case  QUEEN: Serial.println('Q'); break;
-        case -QUEEN: Serial.println('q'); break;
-        case  KING: Serial.println('K'); break;
-        case -KING: Serial.println('k'); break;
-        default: Serial.print('X');
+        case  PAWN: Serial.print('P'); break;
+        case -PAWN: Serial.print('p'); break;
+        case  KNIGHT: Serial.print('N'); break;
+        case -KNIGHT: Serial.print('n'); break;
+        case  BISHOP: Serial.print('B'); break;
+        case -BISHOP: Serial.print('b'); break;
+        case  ROOK: Serial.print('R'); break;
+        case -ROOK: Serial.print('r'); break;
+        case  QUEEN: Serial.print('Q'); break;
+        case -QUEEN: Serial.print('q'); break;
+        case  KING: Serial.print('K'); break;
+        case -KING: Serial.print('k'); break;
+//        default: Serial.print('X');
+        default: Serial.print('.');
       }
       Serial.print(' ');
     }
