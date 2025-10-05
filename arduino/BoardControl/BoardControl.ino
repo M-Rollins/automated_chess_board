@@ -29,8 +29,11 @@ const int yHome = 1290;
 //(1 step = 0.2mm)
 const int squareSize = 140;
 //position of the center of the bottom-right square
-const int a1x = 100;
-const int a1y = 15;
+const int xOffset = 100;
+const int yOffset = 15;
+//square coordinates of a1
+const int a1x = 4;
+const int a1y = 1;
 
 const byte boardWidth = 15;
 const byte boardHeight = 10;
@@ -49,16 +52,17 @@ const char STARTING_POSITION[boardHeight][boardWidth] = {
 };
 const char EMPTY_POSITION[boardHeight][boardWidth] = {
   {0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0},
-  {ROOK, PAWN, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, -ROOK, PAWN},
-  {KNIGHT, PAWN, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, -KNIGHT, PAWN},
-  {BISHOP, PAWN, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, -BISHOP, PAWN},
-  {KING, PAWN, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, -KING, PAWN},
-  {QUEEN, PAWN, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, -QUEEN, PAWN},
-  {BISHOP, PAWN, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, -BISHOP, PAWN},
-  {KNIGHT, PAWN, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, -KNIGHT, PAWN},
-  {ROOK, PAWN, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, -ROOK, PAWN},
+  {ROOK, PAWN, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, -PAWN, -ROOK},
+  {KNIGHT, PAWN, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, -PAWN, -KNIGHT},
+  {BISHOP, PAWN, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, -PAWN, -BISHOP},
+  {KING, PAWN, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, -PAWN, -KING},
+  {QUEEN, PAWN, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, -PAWN, -QUEEN},
+  {BISHOP, PAWN, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, -PAWN, -BISHOP},
+  {KNIGHT, PAWN, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, -PAWN, -KNIGHT},
+  {ROOK, PAWN, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, -PAWN, -ROOK},
   {0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0},
 };
+
 
 unsigned long t;
 unsigned long xLastTime, yLastTime;
@@ -87,7 +91,7 @@ void setup() {
   newCommand = false;newCommand = false;
   
   //sanity check
-  if (a1x + (boardWidth-1) * squareSize > xHome || a1y + (boardHeight-1) * squareSize > yHome) {
+  if (xOffset + (boardWidth-1) * squareSize > xHome || yOffset + (boardHeight-1) * squareSize > yHome) {
     Serial.println("Error: square count is too big or board is too small");
     while (true) {}
   }
@@ -175,16 +179,20 @@ void parseCommand() {
         }
         break;
 
-      case 'M': //Make move
+      case 'M': //move piece
         parseMove();
         break;
-      case 'I': // initialize board state
+      case 'P': //play move
+        parseAlgebraicNotation();
+        break;
+      case 'I': //initialize board state
         initializeBoard(getNum());
         break;
       case 'B':
         printBoardState();
+        break;
       default:
-        Serial.println("invalid command");
+        Serial.println("Unrecognized command");
         break;
     }
     ///
@@ -216,10 +224,6 @@ int getNum() {
   if (numStr.length() == 0) {
     return -1;
   }
-//  Serial.print("\tstr: ");
-//  Serial.print(numStr);
-//  Serial.print("\tint: ");
-//  Serial.println(numStr.toInt());
   return (numStr.toInt());
 }
 
@@ -250,6 +254,86 @@ void homeXY() {
   moveAxes();
 }
 
+void parseAlgebraicNotation(){
+  //Interpret a move in the form of long algebraic notation used by the Universal Chess Interface (e.g. e2e4)
+  //TODO: handle castling and promotion
+  int coords[4];
+  int coordIdx = 0;
+
+  //identify start and destination squares
+  for(int i = 1; i < msgLen && coordIdx < 4; i ++){
+    char c = receivedChars[i];
+    if(coordIdx % 2 == 0){
+      //file
+      switch(c){
+        case ' ': break;
+        case 'a': coords[coordIdx++] = 0 + a1x; break;
+        case 'b': coords[coordIdx++] = 1 + a1x; break;
+        case 'c': coords[coordIdx++] = 2 + a1x; break;
+        case 'd': coords[coordIdx++] = 3 + a1x; break;
+        case 'e': coords[coordIdx++] = 4 + a1x; break;
+        case 'f': coords[coordIdx++] = 5 + a1x; break;
+        case 'g': coords[coordIdx++] = 6 + a1x; break;
+        case 'h': coords[coordIdx++] = 7 + a1x; break;
+        default: Serial.print("Invalid file: "); Serial.println(c); return;
+      }
+    }else{
+      //rank
+//      int r = c - '0';
+      if('1' <= c && c <= '8'){
+        coords[coordIdx++] = a1y + (c - '1');
+      }else{
+        Serial.print("Invalid rank: ");
+        Serial.println(c);
+        return;
+      }
+    }  
+  }
+
+  //check if the move is a capture
+  char capturedPiece = boardState[coords[3]][coords[2]];
+  if(capturedPiece != 0){
+    Serial.println("Capturing");
+    //move the captured piece off the board
+    int storageCoords[2];
+    getStorageSquare(capturedPiece, storageCoords);
+    makeMove(coords[2], coords[3], storageCoords[0], storageCoords[1]);
+  }
+
+  //play the move
+  makeMove(coords[0], coords[1], coords[2], coords[3]);
+  
+}
+
+void getStorageSquare(char piece, int output[2]){
+  //Find the proper storage location(off the board) for the specified piece
+  //Search for a space that fits the piece type and is currently empty
+  if(piece == PAWN){
+    for(int i = a1y; i < a1y + 8; i ++){
+      if(boardState[i][1] == 0){
+        output[0] = 1;
+        output[1] = i;
+        return;
+      }
+    }
+  }else if(piece == -PAWN){
+    for(int i = a1y; i < a1y + 8; i ++){
+      if(boardState[i][13] == 0){
+        output[0] = 13;
+        output[1] = i;
+        return;
+      }
+    }
+  }else{
+    int f = (piece > 0)? 0 : 14;
+    for(int i = a1y; i < a1y + 8; i++){
+      if(EMPTY_POSITION[i][f] == piece && boardState[i][f] == 0){
+        output[0] = f;
+        output[1] = i;
+      }
+    }
+  }
+}
 
 void parseMove() {
   int coords[4];
@@ -261,19 +345,12 @@ void parseMove() {
       return;
     }
   }
-  
   makeMove(coords[0], coords[1], coords[2], coords[3]);
 }
 
 //TODO: parse long algebreic notation?
-//move a piece form one square to another
+//move a piece form one square to another and update the board state accordingly
 void makeMove(int f0, int r0, int f1, int r1) {
-  //TODO: handle captures
-  //if destination square is occupied:
-  //  identify 'storage' location of captured piece
-  //  remove captured piece
-  //  update board state
-  
   //find the best route to move the piece without disturbing the board
   findPath(f0, r0, f1, r1);
   
@@ -313,8 +390,8 @@ void goToSquare(int f, int r) {
   Serial.print(r);
   Serial.println(")");
   
-  int xSquare = f * squareSize + a1x;
-  int ySquare = r * squareSize + a1y;
+  int xSquare = f * squareSize + xOffset;
+  int ySquare = r * squareSize + yOffset;
   if (xSquare < 0 || xSquare > xHome || ySquare < 0 || ySquare > yHome) {
     Serial.println("Square out of bounds");
     return;
@@ -361,8 +438,10 @@ void findPath(int f0, int r0, int f1, int r1){
   int newCost[boardHeight][boardWidth];
   for(int i = 0; i < boardHeight; i++){
     for(int j = 0; j < boardWidth; j ++){
-      cost[i][j] = 32766;
-      newCost[i][j] = 32766;
+//      cost[i][j] = 32766;
+//      newCost[i][j] = 32766;
+      cost[i][j] = 30000;
+      newCost[i][j] = 30000;
     }
   }
   cost[r0][f0] = 0;
