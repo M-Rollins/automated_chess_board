@@ -6,7 +6,7 @@
 
 const int StepperMotor::PULSE_WIDTH_MICROSECONDS = 5;
 const float Axis::V_MIN = 50;  // full steps per second (1 step = 0.2mm)
-const float Axis::V_MAX = 800;
+const float Axis::V_MAX = 600;
 const float Axis::HOME_SPEED = 400;
 const float Axis::ACCEL = 1000;  //full steps/s^2
 

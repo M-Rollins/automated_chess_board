@@ -1,15 +1,19 @@
 //pin definitions
-byte xStep = 5;
-byte xDir = 4;
-byte yStep = 7;
-byte yDir = 6;
-byte xms1 = 10;
-byte xms2 = 9;
-byte yms1 = 12;
-byte yms2 = 11;
-byte xLimSwitch = 2;
-byte yLimSwitch = 3;
-byte magnet = 8;
+#define xStep 5
+#define xDir 4
+#define yStep 7
+#define yDir 6
+#define xms1 10
+#define xms2 9
+#define yms1 12
+#define yms2 11
+#define xLimSwitch 2
+#define yLimSwitch 3
+#define magnet 8
+
+#define xForward LOW
+#define yForward LOW
+#define MICROSTEPPING 4
 
 const char PAWN = 1;
 const char KNIGHT = 2;
@@ -17,10 +21,6 @@ const char BISHOP = 3;
 const char ROOK = 4;
 const char QUEEN = 5;
 const char KING = 6;
-
-const boolean xForward = LOW;
-const boolean yForward = LOW;
-const byte MICROSTEPPING = 4;
 
 //position of limit switches (steps, 0 = minimum)
 const int xHome = 2100;
@@ -32,8 +32,8 @@ const int squareSize = 140;
 const int xOffset = 100;
 const int yOffset = 15;
 //square coordinates of a1
-const int a1x = 4;
-const int a1y = 1;
+const byte a1x = 4;
+const byte a1y = 1;
 
 const byte boardWidth = 15;
 const byte boardHeight = 10;
@@ -63,14 +63,20 @@ const char EMPTY_POSITION[boardHeight][boardWidth] = {
   {0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0},
 };
 
+//Square cost grids for move planning
+byte cost[boardHeight][boardWidth];
+byte newCost[boardHeight][boardWidth];
+//movement costs for move planning
+const byte ORTH_COST = 1;
+const byte DIAG_COST = 1;
 
 unsigned long t;
 unsigned long xLastTime, yLastTime;
 
 //for serial communication
-char endMarker = ';';
+const char endMarker = ';';
 const byte numChars = 32;
-char receivedChars[32];
+char receivedChars[numChars];
 byte charIdx; //indicates the next recieved character to parse
 byte msgLen;
 boolean newCommand;
@@ -79,16 +85,18 @@ const byte MAX_PATH_LENGTH = 32;
 byte path[MAX_PATH_LENGTH][2];
 byte pathLen;
 
+byte storageCoords[2];
+
 
 #include "MotorControl.h"
 
 StepperMotor xMotor;
 StepperMotor yMotor;
-Axis x, y;
+Axis xAxis, yAxis;
 void setup() {
   Serial.begin(9600);
   Serial.println("Initializing...");
-  newCommand = false;newCommand = false;
+  newCommand = false;
   
   //sanity check
   if (xOffset + (boardWidth-1) * squareSize > xHome || yOffset + (boardHeight-1) * squareSize > yHome) {
@@ -100,10 +108,10 @@ void setup() {
   yMotor = StepperMotor(yStep, yDir, yms1, yms2, yForward);
   xMotor.setMicrostepping(MICROSTEPPING);
   yMotor.setMicrostepping(MICROSTEPPING);
-  x = Axis(xMotor, xHome, xLimSwitch);
-  y = Axis(yMotor, yHome, yLimSwitch);
-  x.setTarget(0);
-  y.setTarget(0);
+  xAxis = Axis(xMotor, xHome, xLimSwitch);
+  yAxis = Axis(yMotor, yHome, yLimSwitch);
+  xAxis.setTarget(0);
+  yAxis.setTarget(0);
   
   pinMode(magnet, OUTPUT);
   digitalWrite(magnet, LOW);
@@ -163,7 +171,7 @@ void parseCommand() {
       case 'X': //go to x position
         n = getNum();
         if (n >= 0 and n <= xHome) {
-          x.setTarget(n);
+          xAxis.setTarget(n);
           moveAxes();
         } else {
           Serial.println("X position out of bounds");
@@ -172,7 +180,7 @@ void parseCommand() {
       case 'Y': //go to y position
         n = getNum();
         if (n >= 0 and n <= yHome) {
-          y.setTarget(n);
+          yAxis.setTarget(n);
           moveAxes();
         } else {
           Serial.println("Y position out of bounds");
@@ -184,6 +192,9 @@ void parseCommand() {
         break;
       case 'P': //play move
         parseAlgebraicNotation();
+        break;
+      case 'A':
+        alignPieces();
         break;
       case 'I': //initialize board state
         initializeBoard(getNum());
@@ -230,9 +241,8 @@ int getNum() {
 
 void homeXY() {
   Serial.println("homing");
-
   //x
-  if (x.homeAxis()) {
+  if (xAxis.homeAxis()) {
     Serial.println("X axis homed");
   } else {
     Serial.println("Error homing X axis");
@@ -241,7 +251,7 @@ void homeXY() {
   delay(500);
   
   //y
-  if (y.homeAxis()) {
+  if (yAxis.homeAxis()) {
     Serial.println("Y axis homed");
   } else {
     Serial.println("Error homing Y axis");
@@ -249,8 +259,8 @@ void homeXY() {
   }
   delay(500);
   
-  x.setTarget(xHome - 20);
-  y.setTarget(yHome - 20);
+  xAxis.setTarget(xHome - 20);
+  yAxis.setTarget(yHome - 20);
   moveAxes();
 }
 
@@ -293,10 +303,11 @@ void parseAlgebraicNotation(){
   //check if the move is a capture
   char capturedPiece = boardState[coords[3]][coords[2]];
   if(capturedPiece != 0){
-    Serial.println("Capturing");
+    Serial.print("Capturing at ");
+    printCoordinates(coords[2], coords[3]);
+    Serial.println();
     //move the captured piece off the board
-    int storageCoords[2];
-    getStorageSquare(capturedPiece, storageCoords);
+    getStorageSquare(capturedPiece);
     makeMove(coords[2], coords[3], storageCoords[0], storageCoords[1]);
   }
 
@@ -305,31 +316,32 @@ void parseAlgebraicNotation(){
   
 }
 
-void getStorageSquare(char piece, int output[2]){
+void getStorageSquare(char piece){
   //Find the proper storage location(off the board) for the specified piece
   //Search for a space that fits the piece type and is currently empty
+  //Put the result in the storageCoords array
   if(piece == PAWN){
     for(int i = a1y; i < a1y + 8; i ++){
       if(boardState[i][1] == 0){
-        output[0] = 1;
-        output[1] = i;
+        storageCoords[0] = 1;
+        storageCoords[1] = i;
         return;
       }
     }
   }else if(piece == -PAWN){
     for(int i = a1y; i < a1y + 8; i ++){
       if(boardState[i][13] == 0){
-        output[0] = 13;
-        output[1] = i;
+        storageCoords[0] = 13;
+        storageCoords[1] = i;
         return;
       }
     }
   }else{
-    int f = (piece > 0)? 0 : 14;
+    int x = (piece > 0)? 0 : 14;
     for(int i = a1y; i < a1y + 8; i++){
-      if(EMPTY_POSITION[i][f] == piece && boardState[i][f] == 0){
-        output[0] = f;
-        output[1] = i;
+      if(EMPTY_POSITION[i][x] == piece && boardState[i][x] == 0){
+        storageCoords[0] = x;
+        storageCoords[1] = i;
       }
     }
   }
@@ -348,69 +360,85 @@ void parseMove() {
   makeMove(coords[0], coords[1], coords[2], coords[3]);
 }
 
-//TODO: parse long algebreic notation?
 //move a piece form one square to another and update the board state accordingly
-void makeMove(int f0, int r0, int f1, int r1) {
+void makeMove(int x0, int y0, int x1, int y1) {
   //find the best route to move the piece without disturbing the board
-  findPath(f0, r0, f1, r1);
+  findPath(x0, y0, x1, y1);
   
   Serial.print("Following path: ");
   for(int i = 0; i < pathLen; i ++){
-    Serial.print("(");
-    Serial.print(path[i][0]);
-    Serial.print(", ");
-    Serial.print(path[i][1]);
-    Serial.print(") ");
+    printCoordinates(path[i][0], path[i][1]);
   }
   Serial.println();
+  if(pathLen == 0){return;}
 
-  goToSquare(f0, r0);
-  delay(500);
+//  goToSquare(f0, r0);
+  goToSquare(path[0][0], path[0][1]);
+//  delay(500);
   digitalWrite(magnet, HIGH);
-  delay(500);
-//  goToSquare(f1, r1);
-  for(int i = 0; i < pathLen; i ++){
-    //TODO: don't ramp down speed at every square
-    goToSquare(path[i][0], path[i][1]);
+  delay(200);
+  //follow the path
+  for(int i = 1; i < pathLen; i ++){
+    //skip squares that lie on the same line to avoid unnecessary stopping and starting
+    char dx = path[i][0] - path[i-1][0];
+    char dy = path[i][1] - path[i-1][1];
+    bool skipSquare = (i < pathLen-1) && (path[i+1][0] - path[i][0] == dx) && (path[i+1][1] - path[i][1] == dy);
+    if(!skipSquare){
+      goToSquare(path[i][0], path[i][1]);
+    }
   }
-  delay(500);
+  
+  delay(200);
   digitalWrite(magnet, LOW);
 
-
   //update board state
-  boardState[r1][f1] = boardState[r0][f0];
-  boardState[r0][f0] = 0;
+  boardState[y1][x1] = boardState[y0][x0];
+  boardState[y0][x0] = 0;
 }
 
-//go to file f, square r (a1 = (0, 0))
-void goToSquare(int f, int r) {
-  Serial.print("Moving to square (");
-  Serial.print(f);
-  Serial.print(", ");
-  Serial.print(r);
-  Serial.println(")");
+//go to file x, rank y (a1 = (0, 0))
+void goToSquare(int x, int y) {
+  Serial.print("Moving to square ");
+  printCoordinates(x, y);
+  Serial.println();
   
-  int xSquare = f * squareSize + xOffset;
-  int ySquare = r * squareSize + yOffset;
+  int xSquare = x * squareSize + xOffset;
+  int ySquare = y * squareSize + yOffset;
   if (xSquare < 0 || xSquare > xHome || ySquare < 0 || ySquare > yHome) {
     Serial.println("Square out of bounds");
     return;
   }
 
-  x.setTarget(xSquare);
-  y.setTarget(ySquare);
+  xAxis.setTarget(xSquare);
+  yAxis.setTarget(ySquare);
   moveAxes();
 }
 
 //move to the target position
 void moveAxes(){
-  if (x.isHomed && y.isHomed) {
-    while (!(x.atTarget() && y.atTarget())) {
-      x.updateAxis();
-      y.updateAxis();
+  if (xAxis.isHomed && yAxis.isHomed) {
+    while (!(xAxis.atTarget() && yAxis.atTarget())) {
+      xAxis.updateAxis();
+      yAxis.updateAxis();
     }
-  } else if (!(x.atTarget() && y.atTarget())) {
+  } else if (!(xAxis.atTarget() && yAxis.atTarget())) {
     Serial.println("no valid home position");
+  }
+}
+
+//Straighten out the pieces by going to every square with a piece on it and powering the magnet
+void alignPieces(){
+  byte x;
+  for(byte y = 0; y < boardHeight; y++){
+    for(byte i = 0; i < boardWidth; i++){
+      x = (y % 2 == 0)? i : boardWidth - i - 1;
+      if(boardState[y][x] != 0){
+        goToSquare(x, y);
+        digitalWrite(magnet, HIGH);
+        delay(300);
+        digitalWrite(magnet, LOW);
+      }
+    }
   }
 }
 
@@ -430,22 +458,34 @@ void initializeBoard(int state){
   }
 }
 
+//TODO: prioritize straightaways, deprioritize paths that pass lcose to otehr pieces
 // find the shortest path betweeen two sqares, avoiding occupied squares
-const int ORTH_COST = 1;
-const int DIAG_COST = 1;
-void findPath(int f0, int r0, int f1, int r1){
-  int cost[boardHeight][boardWidth];
-  int newCost[boardHeight][boardWidth];
+void findPath(int x0, int y0, int x1, int y1){
+  if(x0 == x1 && y0 == y1){
+    Serial.println("null move");
+    pathLen = 0;
+    return;
+  }
+  if(boardState[y1][x1] != 0){
+    Serial.println("Error in path finding: destination square ");
+    printCoordinates(x1, y1);
+    Serial.println(" is occupied");
+    pathLen = 0;
+    return;
+  }
+  
   for(int i = 0; i < boardHeight; i++){
     for(int j = 0; j < boardWidth; j ++){
 //      cost[i][j] = 32766;
 //      newCost[i][j] = 32766;
-      cost[i][j] = 30000;
-      newCost[i][j] = 30000;
+//      cost[i][j] = 30000;
+//      newCost[i][j] = 30000;
+      cost[i][j] = 255;
+      newCost[i][j] = 255;
     }
   }
-  cost[r0][f0] = 0;
-  newCost[r0][f0] = 0;
+  cost[y0][x0] = 0;
+  newCost[y0][x0] = 0;
 
   for(int iter = 0; iter < 100; iter++){
 //    //print cost map
@@ -453,7 +493,7 @@ void findPath(int f0, int r0, int f1, int r1){
 //    for(int y = 0; y < boardHeight; y++){
 //      for(int x = 0; x < boardWidth; x++){
 //        Serial.print(newCost[y][x]);
-//        Serial.print(" ");
+//        Serial.print("\t");
 //      }
 //      Serial.println();
 //    }
@@ -477,50 +517,72 @@ void findPath(int f0, int r0, int f1, int r1){
     }
 
     //check if the destination has been found
-    //TODO: doesn't guaruntee minimum cost because if orthogonal & diagonal are different. Iterate until newCost doesn't change?
-    if(newCost[r1][f1] < cost[r1][f1]){
+    //TODO: doesn't guaruntee minimum cost unless orthogonal & diagonal are teh same cost. Iterate until newCost doesn't change?
+    if(newCost[y1][x1] < cost[y1][x1]){
       //trace the path from the destination square back to the starting square
 //      Serial.println("tracing path");
-      pathLen = newCost[r1][f1];
-      int r = r1;
-      int f = f1;
+      pathLen = newCost[y1][x1] + 1;
+      int y = y1;
+      int x = x1;
 
       for(int i = pathLen-1; i > 0; i--){
-        path[i][0] = f;
-        path[i][1] = r;
-//        Serial.print(r);
-//        Serial.print(" ");
-//        Serial.println(f);
+        path[i][0] = x;
+        path[i][1] = y;
 
         //find the direction in which the cost function decreases
-        int c = newCost[r][f];
+        int c = newCost[y][x];
         //check orthogonal moves
-        if(r > 0 && newCost[r-1][f] < c){r--;}
-        else if(r < boardWidth-1 && newCost[r+1][f] < c){r++;}
-        else if(f > 0 && newCost[r][f-1] < c){f--;}
-        else if(f < boardHeight-1 && newCost[r][f+1] < c){f++;}
+        if(y > 0 && newCost[y-1][x] < c){y--;}
+        else if(y < boardHeight-1 && newCost[y+1][x] < c){y++;}
+        else if(x > 0 && newCost[y][x-1] < c){x--;}
+        else if(x < boardWidth-1 && newCost[y][x+1] < c){x++;}
         //check diagonal moves
-        else if(r > 0 && f > 0 && newCost[r-1][f-1] < c){r--; f--;}
-        else if(r < boardWidth-1 && f  > 0 && newCost[r+1][f-1] < c){r++; f--;}
-        else if(r > 0 && f < boardHeight-1 && newCost[r-1][f+1] < c){r--; f++;}
-        else if(r > boardWidth-1 && f < boardHeight-1 && newCost[r+1][f+1] < c){r++; f++;}
+        else if(y > 0 && x > 0 && newCost[y-1][x-1] < c){y--; x--;}
+        else if(y < boardHeight-1 && x  > 0 && newCost[y+1][x-1] < c){y++; x--;}
+        else if(y > 0 && x < boardWidth-1 && newCost[y-1][x+1] < c){y--; x++;}
+        else if(y < boardHeight-1 && x < boardWidth-1 && newCost[y+1][x+1] < c){y++; x++;}
         else{
           //something has gone wrong
-          Serial.println("Failed to find a path");
+          Serial.print("Error in backtracing path: stuck at ");
+          printCoordinates(x, y);
+          //print final cost map
+          Serial.println("cost:");
+          for(int j = 0; j < boardHeight; j++){
+            for(int k = 0; k < boardWidth; k++){
+              Serial.print(newCost[j][k]);
+              Serial.print("\t");
+            }
+            Serial.println();
+          }
           pathLen = 0;
           return;
         }
       }
-      path[0][0] = f;
-      path[0][1] = r;
+      path[0][0] = x;
+      path[0][1] = y;
       return;
     }
 
     //update costs of all squares at once
     memcpy(cost, newCost, sizeof(cost));
   }
-  Serial.println("Failed to find a path");
+  // if the loop completes: no path was found
   pathLen = 0;
+  Serial.print("Failed to find a path from ");
+  printCoordinates(x0, y0);
+  Serial.print(" to ");
+  printCoordinates(x1, y1);
+  Serial.println();
+  
+  //print final cost map
+  Serial.println("cost:");
+  for(int x = 0; x < boardWidth; x++){
+    for(int y = 0; y < boardHeight; y++){
+      Serial.print(newCost[y][x]);
+      Serial.print("\t");
+    }
+    Serial.println();
+  }
 }
 
 //print an ASCII representation of the board state
@@ -540,11 +602,23 @@ void printBoardState(){
         case -QUEEN: Serial.print('q'); break;
         case  KING: Serial.print('K'); break;
         case -KING: Serial.print('k'); break;
-//        default: Serial.print('X');
-        default: Serial.print('.');
+        default: 
+          if(a1x <= j && j <= a1x+7 && a1y <= i && i <= a1y+7){
+            Serial.print('.');
+          }else{
+            Serial.print('-');
+          }
       }
       Serial.print(' ');
     }
     Serial.println();
   }
+}
+
+void printCoordinates(int x, int y){
+  Serial.print("(");
+  Serial.print(x);
+  Serial.print(", ");
+  Serial.print(y);
+  Serial.print(")");
 }

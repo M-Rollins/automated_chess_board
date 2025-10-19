@@ -12,6 +12,7 @@ M[x1][y1][x2][y2]: move from one square to another with the magnet on (e.g. M00 
 	-(14, 9) is the top-right limit
 	-(4, 1) is a1
 P[move]: play move, given in long algebraic notation (e.g. Pe2e4)
+A: fix piece alignment (go to every occupied square and briefly power the magnet)
 I: initialize board state (without moving pieces)
 	I00: empty position (all pieces stowed on the sides)
 	I01: starting position
