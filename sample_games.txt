@@ -1,0 +1,10 @@
+Scholar's mate: 1. e4 e5 2. Bc4 Bc5 3. Qh5 d6 4. Qxf7#
+I01;Pe2e4;Pe7e5;Pf1c4;Pf8c5;Pd1h5;Pd7d6;Ph5f7;
+
+Opera Game: 1.e4 e5 2. Nf3 d6 3. d4 Bg4 4.dxe5 Bxf3 5. Qxf3 Dxe5 6. Bc4 Nf6 7. Qb3 Qe7 8. Nc3 c6 9. Bg5 b5 10. Nxb5 cxb5 11. Bxb5+ Nbd7 12. 0-0-0 Rd8 13. Rxd7 Rxd7 14. Rd1 Qe6 15. Bxd7+ Nxd7 16. Qb8+ Nxb8 17. Rd8#
+
+I01;
+Pe2e4;Pe7e5;Pg1f3;Pd7d6;Pd2d4;Pc8g4;Pd4e5;Pg4f3;Pd1f3;Pd6e5;
+Pf1c4;Pg8f6;Pf3b3;Pd8e7;Pb1c3;Pc7c6;Pc1g5;Pb7b5;Pc3b5;Pc6b5;
+Pc4b5;Pb8d7;Pe1c1;Pa1d1;Pa8d8;Pd1d7;Pd8d7;Ph1d1;Pe7e6;Pb5d7;
+Pf6d7;Pb3b8;Pd7b8;Pd1d8;
