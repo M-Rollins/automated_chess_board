@@ -450,6 +450,7 @@ void alignPieces(){
       }
     }
   }
+  Serial.println(F("done"));
 }
 
 //Set up the pieces in the desired position
@@ -491,21 +492,27 @@ void setPosition(const char desiredState[boardHeight][boardWidth]){
         }
         
         //search for the desired piece
-        for(byte ySource = 0; ySource < boardHeight; ySource++){
-          for(byte xSource = 0; xSource < boardWidth; xSource++){
-            //take the desired piece from where it is, unless it belongs there
-            if(boardState[ySource][xSource] == desiredPiece && boardState[ySource][xSource] != desiredState[ySource][xSource]){
+        byte ySource = 0;
+        byte xSource = 0;
+        while(ySource < boardHeight){
+          if(boardState[ySource][xSource] == desiredPiece && boardState[ySource][xSource] != desiredState[ySource][xSource]){
               makeMove(xSource, ySource, x, y);
-              //break out of the nested loop
-              ySource = boardHeight;
               break;
-            }
+          }
+          if(++xSource > boardWidth){
+            xSource = 0;
+            ySource ++;
           }
         }
-        Serial.println(F("Failed to find piece"));
-      }
+
+        // loop will finish early if the piece is found
+        if(ySource == boardHeight){
+          Serial.println(F("Failed to find piece"));
+        }
+      }  
     }
   }
+  Serial.println(F("Position set"));
 }
 
 // initialize the board's position memory

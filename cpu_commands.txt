@@ -1,0 +1,17 @@
+Command format: [command] [arguments(optional)]
+	-Commands are not case sensitive.
+
+play: start a new game
+	-If the arguments contain 'w' or 'W', the user will play teh white side. Otehrwise, it is controlled by the engine. Likewise for 'b' and black.
+	-A game can only be begun when the board is in the starting position (assumed to be the case at startup)
+	-During the game, the user will be prompted to enter moves in standard or long algebreic notation.
+	-Inputting 'quit' exits the game
+resume: resume a game in progress
+	-Only valid if a game in progress was quit and the board position has not changed
+	-Arguments determine human/engine players as when starting a new game
+init: initialize the board state to the starting position without moving pieces(used for manually settting up the board)
+setup: automatically set up the starting position
+clear: automatically remove all pieces from the board
+adjust: Adjust alignment of pieces by moveing under every piece and powering the magnet briefly
+home: home axes
+exit: quit the program
