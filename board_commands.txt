@@ -1,27 +1,27 @@
 Command format: [cmd type][arg1] [arg2];
 	-command type is a single character
-	-arguments are positive integers, separated by spaces (a space is necessary to separate multiple numerical arguments. All other spaces are ignored)
-	-A semicolon marks the end of a command
+	-arguments are positive integers, separated by spaces (a space is necessary to separate multiple numerical arguments. All other spaces are ignored.)
+	-A semicolon marks the end of a command.
 
 
 H: home x and y axes
-X[coord]: go to x position
-Y[coord]: go to y position
-M[x1][y1][x2][y2]: move from one square to another with the magnet on (e.g. M00 00 01 01)
+X[coord]: Go to x position
+Y[coord]: Go to y position
+M[x1][y1][x2][y2]: Move from one square to another with the magnet on (e.g. M00 00 01 01)
 	-(0, 0) is the bottom-right-most usable location
 	-(14, 9) is the top-right limit
 	-(4, 1) is a1
-P[move]: play move, given in long algebraic notation (e.g. Pe2e4)
+P[move]: Play move, given in long algebraic notation (e.g. Pe2e4)
 	-if the destination square is occupied, removes the captured b=piece from the board
 	-does not check for move legality
 	*not supported: pawn promotion
 	*not supported: castling (must move king and rook as separate commands)
-A: fix piece alignment (go to every occupied square and briefly power the magnet)
-S: set up board (move pieces into position)
+A: Fix piece alignment (go to every occupied square and briefly power the magnet)
+S: Set up board (move pieces into position)
 	S00: empty position (all pieces stowed on the sides)
 	S01: starting position
-I: initialize board state (without moving pieces)
+I: Initialize board state (without moving pieces)
 	I00: empty position
 	I01: starting position
-B: print board state
-D: report dimensions(size of the board and other parameters)
+B: Print board state
+D: Report dimensions(size of the board and other parameters)
