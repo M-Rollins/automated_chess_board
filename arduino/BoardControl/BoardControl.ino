@@ -199,10 +199,10 @@ void parseCommand() {
         }
         break;
 
-      case 'M': //move piece
+      case 'M': //move piece from one square to another
         parseMove();
         break;
-      case 'P': //play move
+      case 'P': //play chess move (capture aware)
         parseAlgebraicNotation();
         break;
       case 'A':
@@ -331,7 +331,7 @@ void parseAlgebraicNotation(){
 
   //play the move
   makeMove(coords[0], coords[1], coords[2], coords[3]);
-  
+  Serial.println(F("Move complete"));
 }
 
 void getStorageSquare(char piece){
@@ -341,7 +341,7 @@ void getStorageSquare(char piece){
   if(piece == PAWN || piece == -PAWN){
     byte x = (piece == PAWN)? 2 : 13;
     for(byte i = a1y; i < a1y + 7; i ++){
-      if(boardState[i][1] == 0){
+      if(boardState[i][x] == 0){
         storageCoords[0] = x;
         storageCoords[1] = i;
         return;
