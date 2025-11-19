@@ -70,6 +70,7 @@ Axis::Axis(StepperMotor m, int lp, int switchPin){
   pos = 0;
   target = 0;
   v = 0;
+  speedFactor = 1;
   isHomed = false;
   pinMode(limSwitch, INPUT_PULLUP);
   setMicrostepping(1);
@@ -83,13 +84,21 @@ void Axis::setMicrostepping(int steps){
   }
 }
 
+//pass a number between 0 and 1 to slow down the axis
+void Axis::setSpeedFactor(float s){
+  speedFactor = s;
+}
+
 void Axis::setTarget(int t){
   target = t;
 }
 
 boolean Axis::atTarget(){
-//  return pos == target && v == 0;
   return pos == target;
+}
+
+int Axis::getPos(){
+  return pos;
 }
 
 boolean Axis::homeAxis(){
@@ -126,14 +135,9 @@ void Axis::updateAxis(){
     return;
   }
   
-//  //stop moving when the target is reached
-//  if(pos == target){
-//    v = 0;
-//    return;
-//  }else 
   if(v == 0){
     // when the motor is stopped and gets a new target position, start moving
-    v = V_MIN;
+    v = V_MIN * speedFactor;
     rampUp = true;
     lastTime = micros();
     return;
@@ -161,21 +165,21 @@ void Axis::updateAxis(){
     
     //accelerate up to max speed
     if(rampUp){
-      v += ACCEL * stepDelay/1000000.;
-      if(v >= V_MAX) {
-        v = V_MAX;
+      v += ACCEL * speedFactor * stepDelay/1000000.;
+      if(v >= V_MAX * speedFactor) {
+        v = V_MAX * speedFactor;
         rampUp = false;
       }
     }
     // decelerate down to minimum speed as the destination approaches
-    float stoppingDist = 1. / (2*ACCEL) * (v*v - V_MIN*V_MIN);
+    float stoppingDist = 1. / (2*ACCEL * speedFactor) * (v*v - V_MIN*V_MIN*speedFactor*speedFactor);
     if(abs(pos - target) <= stoppingDist){
-      v = max(float(v - ACCEL * stepDelay/1000000.), V_MIN);
+      v = max(float(v - ACCEL * speedFactor * stepDelay/1000000.), V_MIN * speedFactor);
       rampUp = false;
     }
   }
 
-  ///
+  // stop moving when the target is reached
   if(pos == target){
     v = 0;
   }

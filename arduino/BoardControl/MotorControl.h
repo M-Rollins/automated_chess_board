@@ -39,6 +39,7 @@ class Axis
     int limSwitch;  //pin associated with limit switch (should be pulled LOW when switch is triggered)
     boolean rampUp; //flag for if the motor is accelerating
     float v;  //speed (steps/s)
+    float speedFactor; //scales acceleration and top speed
     unsigned long stepDelay;  //period between steps(us)
     unsigned long lastTime;
     int microstepping;  //number of microsteps each full step is broken into (1, 2, 4 or 8)
@@ -55,13 +56,15 @@ class Axis
 
     void setMicrostepping(int steps); //sets the microstepping resolution for the assigned motor and updates the motion commands accordingly
     boolean homeAxis(); //runs to the limits switch, then returns true. Returns false if there is an error that prevents homing
+    void setSpeedFactor(float s);
     void setTarget(int t);  //set position to move to
   
-    /* take steps as appropriate to rach target position
-     * this function should be called as often as possible fro smooth motion
+    /* take steps as appropriate to reach target position
+     * this function should be called as often as possible for smooth motion
      */
     void updateAxis();
 
+    int getPos();
     boolean atTarget();
 };
 

@@ -1,3 +1,4 @@
+#define MAX_UINT 65535
 //pin definitions
 #define xStep 5
 #define xDir 4
@@ -75,12 +76,23 @@ const char EMPTY_POSITION[boardHeight][boardWidth] = {
 //  {0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0},
 //};
 
-//Square cost grids for move planning
-byte cost[boardHeight][boardWidth];
-byte newCost[boardHeight][boardWidth];
+//Square cost grid for move planning
+unsigned int cost[boardHeight][boardWidth];
+// for path tracing: record the direction from the node's parent (the square immediately before it on the shortest path)
+char pathDx[boardHeight][boardWidth];
+char pathDy[boardHeight][boardWidth];
 //movement costs for move planning
-#define ORTH_COST 1
-#define DIAG_COST 1
+const unsigned int ORTH_COST = 1000;
+const unsigned int DIAG_COST = 1411; //sqrt(2)
+const unsigned int KNIGHT_COST = 2236; //(sqrt(5)
+const unsigned int CORNER_CUT_PENALTY = 500;
+const unsigned int DIRECTION_CHANGE_PENALTY = 1100;
+
+//for move commands following a path
+const byte MAX_PATH_LENGTH = 32;
+byte path[MAX_PATH_LENGTH][2];
+byte pathLen;
+byte storageCoords[2];
 
 unsigned long t;
 unsigned long xLastTime, yLastTime;
@@ -92,12 +104,7 @@ char receivedChars[numChars];
 byte charIdx; //indicates the next recieved character to parse
 byte msgLen;
 boolean newCommand;
-//for move commands following a path
-const byte MAX_PATH_LENGTH = 32;
-byte path[MAX_PATH_LENGTH][2];
-byte pathLen;
 
-byte storageCoords[2];
 
 
 #include "MotorControl.h"
@@ -419,9 +426,23 @@ void goToSquare(int x, int y) {
     return;
   }
 
+  // scale the speed of the motors so that they arrive at the same time
+  int dx = abs(xSquare - xAxis.getPos());
+  int dy = abs(ySquare - yAxis.getPos());
+  if(dx > dy){
+    xAxis.setSpeedFactor(1);
+    yAxis.setSpeedFactor(max(float(dy) / dx, 0.5));
+  }else{
+    xAxis.setSpeedFactor(max(float(dx) / dy, 0.5));
+    yAxis.setSpeedFactor(1);
+  }
+  
+
   xAxis.setTarget(xSquare);
   yAxis.setTarget(ySquare);
   moveAxes();
+  xAxis.setSpeedFactor(1);
+  yAxis.setSpeedFactor(1);
 }
 
 //move to the target position
@@ -528,133 +549,6 @@ void initializeBoard(int state){
       break;
     default:
       Serial.println(F("Invalid board state command"));
-  }
-}
-
-//TODO: prioritize straightaways, deprioritize paths that pass close to other pieces (diagonals especially)
-// find the shortest path betweeen two sqares, avoiding occupied squares
-void findPath(int x0, int y0, int x1, int y1){
-  if(x0 == x1 && y0 == y1){
-    Serial.println(F("null move"));
-    pathLen = 0;
-    return;
-  }
-  if(boardState[y1][x1] != 0){
-    Serial.println(F("Error in path finding: destination square "));
-    printCoordinates(x1, y1);
-    Serial.println(F(" is occupied"));
-    pathLen = 0;
-    return;
-  }
-  
-  for(int i = 0; i < boardHeight; i++){
-    for(int j = 0; j < boardWidth; j ++){
-//      cost[i][j] = 32766;
-//      newCost[i][j] = 32766;
-//      cost[i][j] = 30000;
-//      newCost[i][j] = 30000;
-      cost[i][j] = 255;
-      newCost[i][j] = 255;
-    }
-  }
-  cost[y0][x0] = 0;
-  newCost[y0][x0] = 0;
-
-  for(int iter = 0; iter < 100; iter++){
-//    //print cost map
-//    Serial.println(F("new cost:"));
-//    for(int y = 0; y < boardHeight; y++){
-//      for(int x = 0; x < boardWidth; x++){
-//        Serial.print(newCost[y][x]);
-//        Serial.print(F("\t"));
-//      }
-//      Serial.println();
-//    }
-    
-    for(int i = 0; i < boardHeight; i ++){
-      for(int j = 0; j < boardWidth; j ++){
-        //consider orthogonal moves
-        int c = cost[i][j] + ORTH_COST;
-        if(i > 0 && boardState[i-1][j] == 0 && c < cost[i-1][j]){newCost[i-1][j] = c;}
-        if(i < boardHeight-1 && boardState[i+1][j] == 0 && c < cost[i+1][j]){newCost[i+1][j] = c;}
-        if(j > 0 && boardState[i][j-1] == 0 && c < cost[i][j-1]){newCost[i][j-1] = c;}
-        if(j < boardWidth-1 && boardState[i][j+1] == 0 && c < cost[i][j+1]){newCost[i][j+1] = c;}
-
-        //consider diagonal moves
-        c = cost[i][j] + DIAG_COST;
-        if(i > 0 && j > 0 && boardState[i-1][j-1] == 0 && c < cost[i-1][j-1]){newCost[i-1][j-1] = c;}
-        if(i > 0 && j < boardWidth-1 && boardState[i-1][j+1] == 0 && c < cost[i-1][j+1]){newCost[i-1][j+1] = c;}
-        if(i < boardHeight-1 && j > 0 && boardState[i+1][j-1] == 0 && c < cost[i+1][j-1]){newCost[i+1][j-1] = c;}
-        if(i < boardHeight-1 && j < boardWidth-1 && boardState[i+1][j+1] == 0 && c < cost[i+1][j+1]){newCost[i+1][j+1] = c;}
-      }
-    }
-
-    //check if the destination has been found
-    //TODO: doesn't guaruntee minimum cost unless orthogonal & diagonal are teh same cost. Iterate until newCost doesn't change?
-    if(newCost[y1][x1] < cost[y1][x1]){
-      //trace the path from the destination square back to the starting square
-//      Serial.println(F("tracing path"));
-      pathLen = newCost[y1][x1] + 1;
-      int y = y1;
-      int x = x1;
-
-      for(int i = pathLen-1; i > 0; i--){
-        path[i][0] = x;
-        path[i][1] = y;
-
-        //find the direction in which the cost function decreases
-        int c = newCost[y][x];
-        //check orthogonal moves
-        if(y > 0 && newCost[y-1][x] < c){y--;}
-        else if(y < boardHeight-1 && newCost[y+1][x] < c){y++;}
-        else if(x > 0 && newCost[y][x-1] < c){x--;}
-        else if(x < boardWidth-1 && newCost[y][x+1] < c){x++;}
-        //check diagonal moves
-        else if(y > 0 && x > 0 && newCost[y-1][x-1] < c){y--; x--;}
-        else if(y < boardHeight-1 && x  > 0 && newCost[y+1][x-1] < c){y++; x--;}
-        else if(y > 0 && x < boardWidth-1 && newCost[y-1][x+1] < c){y--; x++;}
-        else if(y < boardHeight-1 && x < boardWidth-1 && newCost[y+1][x+1] < c){y++; x++;}
-        else{
-          //something has gone wrong
-          Serial.print(F("Error in backtracing path: stuck at "));
-          printCoordinates(x, y);
-          //print final cost map
-          Serial.println(F("cost:"));
-          for(int j = 0; j < boardHeight; j++){
-            for(int k = 0; k < boardWidth; k++){
-              Serial.print(newCost[j][k]);
-              Serial.print(F("\t"));
-            }
-            Serial.println();
-          }
-          pathLen = 0;
-          return;
-        }
-      }
-      path[0][0] = x;
-      path[0][1] = y;
-      return;
-    }
-
-    //update costs of all squares at once
-    memcpy(cost, newCost, sizeof(cost));
-  }
-  // if the loop completes: no path was found
-  pathLen = 0;
-  Serial.print(F("Failed to find a path from "));
-  printCoordinates(x0, y0);
-  Serial.print(F(" to "));
-  printCoordinates(x1, y1);
-  Serial.println();
-  
-  //print final cost map
-  Serial.println(F("cost:"));
-  for(int x = 0; x < boardWidth; x++){
-    for(int y = 0; y < boardHeight; y++){
-      Serial.print(newCost[y][x]);
-      Serial.print(F("\t"));
-    }
-    Serial.println();
   }
 }
 
