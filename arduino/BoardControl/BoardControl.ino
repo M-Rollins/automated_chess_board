@@ -85,8 +85,8 @@ char pathDy[boardHeight][boardWidth];
 const unsigned int ORTH_COST = 1000;
 const unsigned int DIAG_COST = 1411; //sqrt(2)
 const unsigned int KNIGHT_COST = 2236; //(sqrt(5)
-const unsigned int CORNER_CUT_PENALTY = 500;
-const unsigned int DIRECTION_CHANGE_PENALTY = 1100;
+const unsigned int CORNER_CUT_PENALTY = 300;
+const unsigned int DIRECTION_CHANGE_PENALTY = 700;
 
 //for move commands following a path
 const byte MAX_PATH_LENGTH = 32;
@@ -231,7 +231,7 @@ void parseCommand() {
         Serial.println(F("Unrecognized command"));
         break;
     }
-    ///
+    
     newCommand = false;
   }
 }
@@ -365,6 +365,7 @@ void getStorageSquare(char piece){
   }
 }
 
+//TODO: handle promotion
 void parseMove() {
   int coords[4];
   for (int i = 0; i < 4; i ++) {
@@ -389,21 +390,24 @@ void makeMove(int x0, int y0, int x1, int y1) {
   Serial.println();
   if(pathLen == 0){return;}
 
-//  goToSquare(f0, r0);
+
   goToSquare(path[0][0], path[0][1]);
-//  delay(500);
   digitalWrite(magnet, HIGH);
   delay(200);
+  
   //follow the path
-  for(int i = 1; i < pathLen; i ++){
-    //skip squares that lie on the same line to avoid unnecessary stopping and starting
-    char dx = path[i][0] - path[i-1][0];
-    char dy = path[i][1] - path[i-1][1];
-    bool skipSquare = (i < pathLen-1) && (path[i+1][0] - path[i][0] == dx) && (path[i+1][1] - path[i][1] == dy);
-    if(!skipSquare){
-      goToSquare(path[i][0], path[i][1]);
-    }
-  }
+//  for(int i = 1; i < pathLen; i ++){
+//    //skip squares that lie on the same line to avoid unnecessary stopping and starting
+//    char dx = path[i][0] - path[i-1][0];
+//    char dy = path[i][1] - path[i-1][1];
+//    bool skipSquare = (i < pathLen-1) && (path[i+1][0] - path[i][0] == dx) && (path[i+1][1] - path[i][1] == dy);
+//    if(!skipSquare){
+//      goToSquare(path[i][0], path[i][1]);
+//    }
+//  }
+  executePath();
+  
+  
   
   delay(200);
   digitalWrite(magnet, LOW);
@@ -615,4 +619,9 @@ void printCoordinates(int x, int y){
   Serial.print(F(", "));
   Serial.print(y);
   Serial.print(F(")"));
+}
+
+//sign
+template <typename T> int sgn(T val) {
+    return (T(0) < val) - (val < T(0));
 }

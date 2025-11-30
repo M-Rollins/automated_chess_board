@@ -5,10 +5,14 @@
 #include "MotorControl.h"
 
 const int StepperMotor::PULSE_WIDTH_MICROSECONDS = 5;
-const float Axis::V_MIN = 50;  // full steps per second (1 step = 0.2mm)
+const float Axis::V_MIN = 50; // full steps per second (1 step = 0.2mm)
 const float Axis::V_MAX = 600;
 const float Axis::HOME_SPEED = 400;
-const float Axis::ACCEL = 1000;  //full steps/s^2
+const float Axis::ACCEL = 1000; //full steps/s^2
+
+const int Axis::GO_TO_TARGET = 0;
+const int Axis::RAMP_CYCLE = 1;
+const int Axis::SPLINE = 2;
 
 //=======================================================
 StepperMotor::StepperMotor(){}
@@ -72,6 +76,7 @@ Axis::Axis(StepperMotor m, int lp, int switchPin){
   v = 0;
   speedFactor = 1;
   isHomed = false;
+  mode = GO_TO_TARGET;
   pinMode(limSwitch, INPUT_PULLUP);
   setMicrostepping(1);
 }
@@ -91,10 +96,32 @@ void Axis::setSpeedFactor(float s){
 
 void Axis::setTarget(int t){
   target = t;
+  mode = GO_TO_TARGET;
+}
+
+void Axis::followRampCycle(float currentSpeed, float accel, float coastStartTime, float coastStopTime, float cycleStopTime){
+  mode = RAMP_CYCLE;
+  x0 = pos;
+  v0 = currentSpeed;
+  a0 = accel;
+  lastTime = micros();
+  t1 = coastStartTime;
+  t2 = coastStopTime;
+  tf = cycleStopTime;
+}
+
+void Axis::followSpline(float a, float b, float c, float stopTime){
+  mode = SPLINE;
+  x0 = pos;
+  v0 = c;
+  a0 = b;
+  jerk = a;
+  lastTime = micros();
+  tf = stopTime;
 }
 
 boolean Axis::atTarget(){
-  return pos == target;
+  return mode == GO_TO_TARGET && pos == target;
 }
 
 int Axis::getPos(){
@@ -131,7 +158,25 @@ boolean Axis::homeAxis(){
 
 void Axis::updateAxis(){
   //don't move without knowing where the axis is
-  if(!isHomed || pos == target){
+  if(!isHomed){
+    return;
+  }
+
+  switch(mode){
+    case GO_TO_TARGET:
+      updateGoToTarget();
+      break;
+    case RAMP_CYCLE:
+      updateRampCycle();
+      break;
+    case SPLINE:
+      updateSpline();
+      break;
+  }
+}
+
+void Axis::updateGoToTarget(){
+  if(pos == target){
     return;
   }
   
@@ -182,5 +227,49 @@ void Axis::updateAxis(){
   // stop moving when the target is reached
   if(pos == target){
     v = 0;
+  }
+}
+
+void Axis::updateRampCycle(){
+  float t = (micros() - lastTime) / 1000000.;
+  float x;
+  if(t <= t1){
+    x = x0 + v0*t + 0.5*a0*t*t;
+  }else if(t <= t2){
+    x = x0 + (v0*t1 + 0.5*a0*t1*t1) + (v0 + t1*a0) * (t - t1);
+  }else if(t <= tf){
+    x = x0 + (v0*t1 + 0.5*a0*t1*t1) + (v0 + t1*a0) * (t - t1) +  - 0.5*a0*(t - t2)*(t - t2);
+  }else{
+    //end of cycle
+    mode = GO_TO_TARGET;
+    target = pos;
+    return;
+  }
+
+  if(x - pos > 0.5/microstepping){
+    motor.step(true);
+    pos += 1./microstepping;
+  }else if(x - pos < -0.5/microstepping){
+    motor.step(false);
+    pos -= 1./microstepping;
+  }
+}
+
+void Axis::updateSpline(){
+  float t = (micros() - lastTime) / 1000000.;
+  if(t <= tf){
+    float x = jerk*t*t*t + a0*t*t + v0*t + x0;
+    if(x - pos > 0.5/microstepping){
+      motor.step(true);
+      pos += 1./microstepping;
+    }else if(x - pos < -0.5/microstepping){
+      motor.step(false);
+      pos -= 1./microstepping;
+    }
+  }else{
+    //end of cycle
+    mode = GO_TO_TARGET;
+    target = pos;
+    return;
   }
 }

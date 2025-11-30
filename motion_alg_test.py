@@ -237,15 +237,18 @@ class GUI():
             t1x, t2x, t3x = self.get_time_split(sx*dx, a, v_max, sx*v0x, sx*vfx)
             t1y, t2y, t3y = self.get_time_split(sy*dy, a, v_max, sy*v0y, sy*vfy)
             
-            # The slower axis uses teh shortest-time path. Teh other follows a cubic spline that finishes at the same time
+            # The slower axis uses the shortest-time path. The other follows a cubic spline that finishes at the same time
             if t3x > t3y:
                 segment_time = np.linspace(0, t3x, numpoints)
                 x = self.get_trajectory_from_times(v0x, sx*a, t1x, t2x, t3x, segment_time)
                 y = self.get_cubic_spline(dy, v0y, vfy, t3x, segment_time)
+                # update node velocity estimate
+                node_vx[i] = float(v0x + sx*a * (t1x - (t3x-t2x)))
             else:
                 segment_time = np.linspace(0, t3y, numpoints)
                 y = self.get_trajectory_from_times(v0y, sy*a, t1y, t2y, t3y, segment_time)
                 x = self.get_cubic_spline(dx, v0x, vfx, t3y, segment_time)
+                node_vy[i] = float(v0y + sy*a * (t1y - (t3y-t2y)))
             
             # add the segment to the trajectory
             if len(self.trajectory_t) == 0:
@@ -285,27 +288,37 @@ class GUI():
         return vx, vy
             
     def get_time_split(self, dx, a, v_max, v0, vf):
-        '''Calculate key times (sop accelerating, start decelerating, finish) to get from x=0 to dx as quickly as possible'''
-        
+        '''Calculate key times (sop accelerating, start decelerating, finish) to get from x=0 to dx as quickly as possible (dx and a should be positive)'''
         t1 = (v_max - v0) / a
         
         # check if there is time to get to max speed
-        dt3_min = (v_max - vf) / a
-        if v0 * t1 + 0.5 * a * (t1**2 - dt3_min**2) + v_max * dt3_min > dx:
+        dt3 = (v_max - vf) / a
+        if v0 * t1 + 0.5 * a * (t1**2 - dt3**2) + v_max * dt3 > dx:
             # if ramping to full speed, then back down would overshoot, we need to stop short of max speed
             t_asym = (vf - v0) / a
             
-            # quadratic formula
-            aa = a
-            bb = -a * t_asym + v0 + vf
-            cc = 0.5 * a * t_asym**2 - vf * t_asym - dx
+            # check if there is actually time to achieve the target final velocity
+            if vf > v0 and v0 * t_asym + 0.5 * a * t_asym**2 > dx:
+                # if not, accelerate from start to finish
+                t1 = (-v0 + np.sqrt(v0**2 + 2 * a * dx)) / a
+                t2 = t1
+                t3 = t1
+            elif vf < v0 and v0 * (-t_asym) - 0.5 * a * t_asym**2 > dx:
+                t1 = 0
+                t2 = 0
+                t3 = -(-v0 + np.sqrt(v0**2 - 2 * a * dx)) / a
+            else:
             
-            t1 = (-bb + np.sqrt(bb**2 - 4*aa*cc)) / (2 * aa)
-            t2 = t1
-            t3 = 2 * t1 - t_asym
+                # quadratic formula
+                aa = a
+                bb = -a * t_asym + v0 + vf
+                cc = 0.5 * a * t_asym**2 - vf * t_asym - dx
+                
+                t1 = (-bb + np.sqrt(bb**2 - 4*aa*cc)) / (2 * aa)
+                t2 = t1
+                t3 = 2 * t1 - t_asym
         
         else:
-            dt3 = (-vf + v_max) / a
             dt2 = (dx - v0*t1 - v_max*dt3 + 0.5*a*(dt3**2 - t1**2)) / v_max
             
             t2 = t1 + dt2
@@ -334,7 +347,7 @@ class GUI():
         return x
     
     def get_cubic_spline(self, xf, v0, vf, tf, time_points):
-        '''Calculate a cubic trajectorysuch that: at t=0, x=0, v=v0; at t=tf, x=xf, v=vf'''
+        '''Calculate a cubic trajectory such that: at t=0, x=0, v=v0; at t=tf, x=xf, v=vf'''
         c = v0
         b = (-2*c - vf) / tf + 3*xf / tf**2
         a = (c + vf) / tf**2 - 2*xf / tf**3

@@ -32,6 +32,21 @@ class Axis
 {
   private:
     StepperMotor motor; //motor which drives the axis
+    static const int GO_TO_TARGET;  //travel to the target position as quickly as posible and stop there
+    static const int RAMP_CYCLE;  //follow a prespecified acceleration profile
+    static const int SPLINE;  //follow a prespecified cubix motion profile
+    int mode; //defines which of the above modes to follow
+    //motion cycle parameters
+    float t1; //ramp
+    float t2; //ramp
+    float tf; //ramp and spline
+    float x0; //ramp and spline
+    float v0;  //ramp and spline
+    float a0; //ramp and spline
+    float jerk; //spline
+    
+//    float cycleParams[5];  //for ramp cycle: [v0, a, t1, t2, t3]; for spline: [a, b, c, x0, tf]
+    
     float pos;  //current position (full steps)
     float target; //target position
     int limitPos; //position of limit switch (assumed to be on upper limit of motion)
@@ -41,15 +56,20 @@ class Axis
     float v;  //speed (steps/s)
     float speedFactor; //scales acceleration and top speed
     unsigned long stepDelay;  //period between steps(us)
-    unsigned long lastTime;
+    unsigned long lastTime; //in position target mode: last time the motor stepped; in ramp and spline modes: start time of the motion profile
     int microstepping;  //number of microsteps each full step is broken into (1, 2, 4 or 8)
+
+    //each motion mode has a separate position update function
+    void updateGoToTarget();
+    void updateRampCycle();
+    void updateSpline();
 
   public:
     boolean isHomed;  //flag for if the axis has a valid home position
     static const float V_MIN; //starting/stopping speed (steps/s)
     static const float V_MAX; //maximum speed
     static const float HOME_SPEED; //speed for homing the axes
-    static const  float ACCEL;  //acceleration (steps/s^2)
+    static const float ACCEL;  //acceleration (steps/s^2)
     
     Axis(StepperMotor m, int lp, int switchPin);
     Axis();
@@ -58,6 +78,10 @@ class Axis
     boolean homeAxis(); //runs to the limits switch, then returns true. Returns false if there is an error that prevents homing
     void setSpeedFactor(float s);
     void setTarget(int t);  //set position to move to
+    /*start a motion cycle: starting at speed v0, accelerate at rate a until time t1; constant velocity until t2; accelerate at -a until t3*/
+    void followRampCycle(float v0, float a, float t1, float t2, float t3);
+    /*follow a cubic curve (x(t) = at^3 + bt^2 + ct + x(0) until time tf*/
+    void followSpline(float a, float b, float c, float tf);
   
     /* take steps as appropriate to reach target position
      * this function should be called as often as possible for smooth motion
