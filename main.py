@@ -7,19 +7,25 @@ import time
 
 class Game():
     
-    def __init__(self, robot, w=True, b=True, cpu_time_limit=0.1):
+    def __init__(self, robot, w=True, b=True, cpu_time_limit=0.1, engine_strength=20):
         self.robot = robot
         self.white_is_human = w
         self.black_is_human = b
         self.cpu_time_limit = cpu_time_limit
+        self.engine_strength = engine_strength
         
         self.engine = chess.engine.SimpleEngine.popen_uci('stockfish/stockfish-windows-x86-64-sse41-popcnt.exe')
+        self.engine.configure({"Skill Level": self.engine_strength})
         self.board = chess.Board()
         self.game_over = False
+    
+    def set_engine_strength(self, s):
+        self.engine_strength = s
         
     def resume(self):
         '''Start up a game again after quitting'''
         self.engine = chess.engine.SimpleEngine.popen_uci('stockfish/stockfish-windows-x86-64-sse41-popcnt.exe')
+        self.engine.configure({"Skill Level": self.engine_strength})
         self.game_over = False
         self.play_game()
         
@@ -65,9 +71,8 @@ class Game():
             else:
                 move = self.get_computer_move()
         
-        
             if move in self.board.legal_moves:
-                print(self.board.is_castling(move))
+                # TODO: handle ep captures
                 self.robot.move(move.uci(), is_castling=self.board.is_castling(move))
                 self.board.push(move)
                 
@@ -91,6 +96,7 @@ if __name__ == '__main__':
     time.sleep(1)
         
     game = None
+    engine_strength = 20
     
     while True:
         # let the user choose which side(s) to play
@@ -113,7 +119,7 @@ if __name__ == '__main__':
                 white_is_human = 'w' in args
                 black_is_human = 'b' in args
                 # start the game
-                game = Game(robot, white_is_human, black_is_human)
+                game = Game(robot, white_is_human, black_is_human, engine_strength=engine_strength)
                 game.play_game()
                 
             case 'resume':
@@ -127,6 +133,20 @@ if __name__ == '__main__':
                 game.black_is_human = 'b' in args
                 
                 game.resume()
+            
+            case 'engine':
+                # set the strength of the engine (1-20)
+                try:
+                    s = int(args)
+                    if(s < 0 or s > 20):
+                        print('Engine strength must be an integer from 0-20')
+                    else:
+                        engine_strength = s
+                        if game is not None: game.set_engine_strength(s)
+                        print('\tsetting engine strength to', s)
+                except ValueError:
+                    print('Engine strength must be an integer from 0-20')
+                
                 
             case 'init':
                 # initialize the board state to the starting position after manually setting up
@@ -148,8 +168,3 @@ if __name__ == '__main__':
                 sys.exit()
             case _:
                 print('\tinvalid command')
-    
-    
-    
-    
-
