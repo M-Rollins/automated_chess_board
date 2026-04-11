@@ -8,3 +8,4 @@ Driver (Ports>USB-Serial CH340): version 3.4.2014.8
 
 2025/10/03: version 3.3.2011.11
 https://sparks.gogo.co.nz/ch340.html
+official site: https://www.wch-ic.com/downloads/ch341ser_zip.html
