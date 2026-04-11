@@ -1,36 +1,25 @@
 import chess
 import chess.engine
+import sys
 
-engine = chess.engine.SimpleEngine.popen_uci('stockfish/stockfish-windows-x86-64-sse41-popcnt.exe')
+current_os = sys.platform
+if current_os == 'win32':
+    engine_path = 'stockfish/stockfish-windows-x86-64-sse41-popcnt.exe'
+elif current_os =='linux':
+    engine_path = 'stockfish/stockfish-android-armv8'
+else:
+    raise ValueError(f'OS "{current_os}" not recognized')
 
+print(f'OS is {current_os}\nOpening engine at {engine_path}')
+
+engine = chess.engine.SimpleEngine.popen_uci(engine_path, timeout=15)
+
+print('Playing test game')
 board = chess.Board()
 while not board.is_game_over():
-    result = engine.play(board, chess.engine.Limit(time=0.1))
+    result = engine.play(board, chess.engine.Limit(time=0.01))
     board.push(result.move)
     print(board)
 
 engine.quit()
-
-
-
-
-# import asyncio
-# import chess
-# import chess.engine
-
-# async def foo():
-#     print('foo')
-
-# async def main() -> None:
-#     transport, engine = await chess.engine.popen_uci('stockfish/stockfish-windows-x86-64-sse41-popcnt.exe')
-
-#     board = chess.Board()
-#     while not board.is_game_over():
-#         result = await engine.play(board, chess.engine.Limit(time=0.1))
-#         board.push(result.move)
-        
-#         print(board)
-
-#     await engine.quit()
-
-# asyncio.run(main())
+print('Engine test successful')
