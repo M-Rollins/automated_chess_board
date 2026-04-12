@@ -13,7 +13,8 @@ import queue
 # engine_skill_levels = [0, 2, 5, 10, 15, 20]
 
 # settings for engine level (based on lichess skill settings 1, 3, 4, 5, 6, 8)
-engine_skill_levels = [-9, -1, 3, 7, 11, 20]
+# engine_skill_levels = [-9, -1, 3, 7, 11, 20]
+engine_skill_levels = [0, 1, 3, 7, 11, 20]
 engine_time_limits = [.05, .15, .2, .3, .4, 1]
 engine_depth = [5, 5, 5, 5, 8, 22]
 
@@ -27,35 +28,36 @@ class GameManager():
     MENU = 1
     AWAITING_MOVE = 2
     BUSY = 3
+
     
-    
-    
-    
-    
-    def __init__(self, robot, cpu_time_limit=0.1, engine_strength=20):
+    def __init__(self, robot, cpu_time_limit=0.1, cpu_depth_limit=None):
         self.robot = robot
         self.white_is_cpu = False
         self.black_is_cpu = False
         self.cpu_time_limit = cpu_time_limit
-        self.engine_strength = engine_strength
+        self.cpu_depth_limit = cpu_depth_limit
         
-        self.engine_filepath = 'stockfish/stockfish-android-armv8'
-        self.engine = chess.engine.SimpleEngine.popen_uci(self.engine_filepath)
-        self.engine.configure({"Skill Level": self.engine_strength})
+        current_os = sys.platform
+        if current_os == 'win32':
+            self.engine_filepath = 'stockfish/stockfish-windows-x86-64-sse41-popcnt.exe'
+        elif current_os =='linux':
+            self.engine_filepath = 'stockfish/stockfish-android-armv8'
+        else:
+            raise ValueError(f'OS "{current_os}" not recognized')
+
+        self.engine = chess.engine.SimpleEngine.popen_uci(self.engine_filepath, timeout=15)
         self.board = chess.Board()
         # self.game_over = False
-        
-        
         
         self.command_queue = queue.Queue()
         
         self.game_in_progress = False
         self.state = self.MENU
         # monitors switches/buttons and controls LEDs
+        print('Initializing IO manager...')
         self.IO = IO_manager.IO_Manager(self.command_queue)
         self.keyboard = IO_manager.KeyboardManager(self.command_queue)
-        
-        
+        print('\tSuccess')
         
     
     def run(self):
@@ -67,14 +69,18 @@ class GameManager():
             # check for input from the control panel / keyboard
             while not self.command_queue.empty():
                 cmd = self.command_queue.get()
+                print(f'command: {cmd}')
                 if cmd.expiration_time is not None and cmd.expiration_time < time.time():
+                    print('/tTime expired: skipping command')
                     continue
-                
+                func = getattr(self, cmd.func)
                 # execute the command
                 if type(cmd.args) == tuple:
-                    cmd.function(*cmd.args)
+                    # cmd.func(*cmd.args)
+                    func(*cmd.args)
                 else:
-                    cmd.function(cmd.args)
+                    # cmd.func(cmd.args)
+                    func(cmd.args)
             
             
             # If a game is running and it is the computer's turn, query the engine
@@ -102,12 +108,13 @@ class GameManager():
         
     def configure_engine(self, level):
         '''Set the engine to one of six levels (0-5)'''
-        print(f'setting engine to level {level}')
-        self.engine.configure({"Skill Level": engine_skill_levels[level],
-                               "time": engine_time_limits[level],
-                               "depth": engine_depth[level]})
+        print('\tsetting engine level to', level)
+        self.engine.configure({"Skill Level": engine_skill_levels[level]})
+        self.cpu_time_limit = engine_time_limits[level]
+        self.cpu_depth_limit = engine_depth[level]
     
     def configure_players(self, white, black):
+        print(f'Setting players: white={'cpu' if white else 'human'} black={'cpu' if black else 'human'}')
         self.white_is_cpu = white
         self.black_is_cpu = black
     
@@ -161,11 +168,10 @@ class GameManager():
             case 'engine':    # set the strength of the engine (0-5)
                 try:
                     level = int(args)
-                    if(level < 0 or s > 5):
+                    if(level < 0 or level > 5):
                         print('Engine level must be an integer from 0-5')
                     else:
-                        self.configure_engine(level)
-                        print('\tsetting engine level to', level)
+                        self.configure_engine(level) 
                 except ValueError:
                     print('Engine level must be an integer from 0-5')
                 
@@ -200,7 +206,6 @@ class GameManager():
     def resume(self):
         '''Start up a game again after quitting'''
         self.engine = chess.engine.SimpleEngine.popen_uci(self.engine_filepath)
-        self.engine.configure({"Skill Level": self.engine_strength})
         self.game_over = False
         self.play_game()
         
@@ -230,7 +235,7 @@ class GameManager():
     
     def get_computer_move(self):
         '''Choose the best move in the position, according to the engine'''
-        result = self.engine.play(self.board, chess.engine.Limit(time=self.cpu_time_limit))
+        result = self.engine.play(self.board, chess.engine.Limit(time=self.cpu_time_limit, depth=self.cpu_depth_limit))
         return result.move
     
     

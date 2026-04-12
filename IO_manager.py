@@ -10,7 +10,7 @@ button_pins = [11, 4, 10, 27]
 button_led_pins = [5, 17, 9, 22]
 toggle_sw_pins = [3, 13]
 toggle_led_pins = [2, 6]
-rot_sw_pins = [12, 16, 20, 21, 26, 19]
+rot_sw_pins = [19, 26, 21, 20, 16, 12]
 
 # class InputData:
 #     def __init__(self):
@@ -29,12 +29,12 @@ class IO_Manager():
             self.buttons[i] = MyButton(button_pins[i], button_led_pins[i], i, i + numbuttons)
             
         
-        self.white_toggle = ToggleSwitch(toggle_sw_pins[0], toggle_led_pins[0])
-        self.black_toggle = ToggleSwitch(toggle_sw_pins[0], toggle_led_pins[0])
+        self.white_toggle = ToggleSwitch(toggle_sw_pins[0], toggle_led_pins[0], default_state=True)
+        self.black_toggle = ToggleSwitch(toggle_sw_pins[1], toggle_led_pins[1], default_state=True)
         self.toggle_states = (False, False)
         
         self.rot_sw = RotarySwitch(rot_sw_pins)
-        
+        self.rot_sw_value = -2
 
 
     def update_loop(self):
@@ -43,28 +43,33 @@ class IO_Manager():
             val = self.rot_sw.read()
             if val != self.rot_sw_value:
                 self.rot_sw_value = val
-                self.command_queue.put(Command(GameManager.configure_engine, val, None))
+                if val == -1:
+                    print("Error reading rotary switch: could not detect position")
+                else:
+                    self.command_queue.put(Command('configure_engine', val, None))
                 
             # read toggle switches
             new_toggle_states = (self.white_toggle.read(), self.black_toggle.read())
             if new_toggle_states != self.toggle_states:
                 self.toggle_states = new_toggle_states
-                self.command_queue.put(Command(GameManager.configure_players, self.toggle_states, None))
+                self.command_queue.put(Command('configure_players', self.toggle_states, None))
             
             # read pushbuttons
             for b in self.buttons:
                 val = b.update()
                 if val != -1:
-                    self.command_queue.put(Command(GameManager.button_press, val, time.time() + 0.1))
+                    self.command_queue.put(Command('button_press', val, time.time() + 0.1))
                 
 class KeyboardManager():
     def __init__(self, command_queue):
         self.command_queue = command_queue
     
     def update_loop(self):
+        # pass
         while(True):
-            s = input()
-            self.command_queue.put(Command(GameManager.keyboard_input, s, time.time() + 0.1))
+            # if self.command_queue.empty()
+            s = input('> ')
+            self.command_queue.put(Command('keyboard_input', s, time.time() + 0.1))
    
         
    
@@ -120,15 +125,15 @@ class MyButton():
             
 class ToggleSwitch():
     '''Toggle switch with associated LED'''
-    def __init__(self, sw_pin, led_pin, led_default_state):
+    def __init__(self, sw_pin, led_pin, default_state=False):
         self.button = gpiozero.Button(sw_pin)
         self.led = gpiozero.LED(led_pin)
-        self.led_default = led_default_state
+        self.default_state = default_state
         
-        self.set_led(self.led_default)
+        self.read()
         
     def read(self):
-        self.sw_state = self.button.pressed
+        self.sw_state = self.button.is_pressed ^ self.default_state
         self.set_led(self.sw_state)
         return self.sw_state
     
@@ -149,7 +154,7 @@ class RotarySwitch():
     def read(self):
         '''Return switch position in a range of 0-(n-1) where n is the number of positions'''
         for i in range(self.num_positions):
-            if self.switches[i].is_pressed():
+            if self.switches[i].is_pressed:
                 
                 return i
         
