@@ -68,8 +68,11 @@ class KeyboardManager():
         # pass
         while(True):
             # if self.command_queue.empty()
-            s = input('> ')
-            self.command_queue.put(Command('keyboard_input', s, time.time() + 0.1))
+            try:
+                s = input('')
+                self.command_queue.put(Command('keyboard_input', s, time.time() + 0.5))
+            except Exception:
+                pass
    
         
    
@@ -81,6 +84,7 @@ class MyButton():
         self.led_default = led_default_state
         self.val1 = val1
         self.val2 = val2
+        self.long_press_threshold = long_press_threshold
         self.sw_state = False
         self.press_detected = False    # indicate when a long press has been triggered but the button hasn't been released
         self.sw_press_time = 0
@@ -92,19 +96,21 @@ class MyButton():
         if self.sw_state:
             duration = time.time() - self.sw_press_time
             
-            
             # # retrun LED to default after the command finishes
             # self.set_led(self.led_default)
-            
+
+            # button is released
             if not self.button.is_pressed:
+                short_press = not self.press_detected
                 self.sw_state = False
                 self.press_detected = False
+                self.set_led(self.led_default)
                 
                 # if the button wasn't held, register a short press
-                if not self.press_detected:
+                if short_press:
                     return self.val1
                 
-            elif duration > self.long_press_threshold:
+            elif duration > self.long_press_threshold and not self.press_detected:
                 self.press_detected = True
                 return self.val2
                 

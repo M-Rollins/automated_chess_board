@@ -26,8 +26,10 @@ Command = namedtuple('Command', ['func', 'args', 'expiration_time'])
 
 class GameManager():
     MENU = 1
-    AWAITING_MOVE = 2
-    BUSY = 3
+    # AWAITING_MOVE = 2
+    AWAITING_CPU_MOVE = 2
+    AWAITING_PLAYER_MOVE = 3
+    BUSY = 4
 
     
     def __init__(self, robot, cpu_time_limit=0.1, cpu_depth_limit=None):
@@ -45,13 +47,18 @@ class GameManager():
         else:
             raise ValueError(f'OS "{current_os}" not recognized')
 
-        self.engine = chess.engine.SimpleEngine.popen_uci(self.engine_filepath, timeout=15)
-        self.board = chess.Board()
+        for i in range(3):
+            try:
+                self.engine = chess.engine.SimpleEngine.popen_uci(self.engine_filepath, timeout=15)
+                break
+            except TimeoutError:
+                print(f'Failed to initialize engine ({i+1}/3)')
+        self.board = None
         # self.game_over = False
         
         self.command_queue = queue.Queue()
         
-        self.game_in_progress = False
+        # self.game_in_progress = False   #TODO: redundant
         self.state = self.MENU
         # monitors switches/buttons and controls LEDs
         print('Initializing IO manager...')
@@ -66,32 +73,25 @@ class GameManager():
         threading.Thread(target=self.keyboard.update_loop, daemon=True).start()
         
         while True:
-            # check for input from the control panel / keyboard
-            while not self.command_queue.empty():
-                cmd = self.command_queue.get()
-                print(f'command: {cmd}')
-                if cmd.expiration_time is not None and cmd.expiration_time < time.time():
-                    print('/tTime expired: skipping command')
-                    continue
-                func = getattr(self, cmd.func)
-                # execute the command
-                if type(cmd.args) == tuple:
-                    # cmd.func(*cmd.args)
-                    func(*cmd.args)
-                else:
-                    # cmd.func(cmd.args)
-                    func(cmd.args)
-            
-            
-            # If a game is running and it is the computer's turn, query the engine
-            if self.game_in_progress:
-                cpu_turn = self.white_is_cpu if self.board.turn else self.black_is_cpu
-                if cpu_turn:
+            if self.state != self.BUSY:
+                # check for input from the control panel / keyboard
+                while not self.command_queue.empty():
+                    cmd = self.command_queue.get()
+                    print(f'command: {cmd}')
+                    if cmd.expiration_time is not None and cmd.expiration_time < time.time():
+                        print('\tTime expired: skipping command')
+                        continue
+                    func = getattr(self, cmd.func)
+                    # execute the command
+                    if type(cmd.args) == tuple:
+                        func(*cmd.args)
+                    else:
+                        func(cmd.args)
+                
+                
+                # If a game is running and it is the computer's turn, query the engine
+                if self.state == self.AWAITING_CPU_MOVE:
                     self.play_move(self.get_computer_move())
-                    if self.board.is_game_over():
-                        outcome = self.board.outcome()
-                        print(f'game over: {outcome}')
-                        self.quit_game()
                         
             # match self.state:
             #     case MENU:
@@ -102,9 +102,6 @@ class GameManager():
             #         pass
         
         
-    
-    # def set_engine_strength(self, s):
-    #     self.engine_strength = s
         
     def configure_engine(self, level):
         '''Set the engine to one of six levels (0-5)'''
@@ -148,13 +145,13 @@ class GameManager():
                 self.configure_players(not white_is_human, not black_is_human)
                 # start the game
                 self.board = chess.Board()
-                self.state = self.AWAITING_MOVE
+                self.set_awaiting_state()
                 
             case 'resume':    # resume the game in progress, optionally changing sides
                 if self.state != self.MENU:
                     print('\'resume\' command is only allowed from the menu')
                     return
-                if not self.game_in_progress:
+                if self.board is None:
                     print('\tno game in progress')
                     return
                 
@@ -163,38 +160,64 @@ class GameManager():
                 black_is_human = 'b' in args
                 self.configure_players(not white_is_human, not black_is_human)
                 # reume the game
-                self.state = self.AWAITING_MOVE
+                self.set_awaiting_state()
             
             case 'engine':    # set the strength of the engine (0-5)
-                try:
-                    level = int(args)
-                    if(level < 0 or level > 5):
-                        print('Engine level must be an integer from 0-5')
-                    else:
-                        self.configure_engine(level) 
-                except ValueError:
+                level = int(args)
+                if(level < 0 or level > 5):
                     print('Engine level must be an integer from 0-5')
+                else:
+                    self.configure_engine(level) 
                 
             case 'init':    # initialize the board state to the starting position after manually setting up
                 robot.initialize_position()
-                self.game_in_progress = False
+                # self.game_in_progress = False
                 self.state = self.MENU
             case 'setup':    # physically reset the board to the starting position
                 robot.setup_position('starting')
-                self.game_in_progress = False
-                self.state = self.MENU
+                # quit any games in progress
+                self.quit_game()
             case 'clear':    # physically remove all pieces from the board
                 robot.setup_position('empty')
-                self.game_in_progress = False
-                self.state = self.MENU
+                # quit any games in progress
+                self.quit_game()
             case 'adjust':
+                old_state = self.state
+                self.state = self.BUSY
                 robot.adjust_pieces()
+                self.state = old_state
             case 'home':
+                old_state = self.state
+                self.state = self.BUSY
                 robot.home()
+                self.state = old_state
+            case 'pause':
+                if self.state == self.MENU:
+                    print('no game in progress')
+                else:
+                    # self.quit_game()
+                    self.state = self.MENU
             case 'exit':
-                sys.exit()
+                self.quit()
             case _:
+                if self.state == self.AWAITING_PLAYER_MOVE:
+                    # Enter a move in standard algebreic notation
+                    try:
+                        move = self.board.parse_san(user_input)
+                        self.play_move(move)
+                        return
+                    except chess.IllegalMoveError:
+                        print('\tillegal move')
+                        return
+                    except chess.AmbiguousMoveError:
+                        print('\tambiguous move')
+                        return
+                    except chess.InvalidMoveError:
+                        pass
+                
                 print('\tinvalid command')
+        
+                
         
     
     
@@ -203,35 +226,17 @@ class GameManager():
         print(f'button {button_id}')
     
         
-    def resume(self):
-        '''Start up a game again after quitting'''
-        self.engine = chess.engine.SimpleEngine.popen_uci(self.engine_filepath)
-        self.game_over = False
-        self.play_game()
         
     def quit_game(self):
-        self.engine.quit()
-        # self.game_over = True
-        self.game_in_progress = False
+        self.board = None
+        self.state = self.MENU
+
+    def set_awaiting_state(self):
+        '''Set the current state to await a move from the engine or human player'''
+        cpu_turn = self.white_is_cpu if self.board.turn else self.black_is_cpu
+        self.state = self.AWAITING_CPU_MOVE if cpu_turn else self.AWAITING_PLAYER_MOVE
     
-    def get_human_move(self):
-        '''Allow a human player to choose a move. Stops the game if the "quit" command is recieved'''
-        while True:
-            player = 'white' if self.board.turn else 'black'
-    
-            # ask for user input until a legal move is selected
-            while True:
-                m = input(player + ' to move: ')
-                if m.lower() == 'quit':
-                    self.quitGame()
-                    return
-                try:
-                    move = self.board.parse_san(m)
-                    break
-                except ValueError:
-                    print('\'' + m + '\'' + ' is not a legal move. Try again.')
-    
-            return move
+
     
     def get_computer_move(self):
         '''Choose the best move in the position, according to the engine'''
@@ -240,41 +245,28 @@ class GameManager():
     
     
     def play_move(self, move):
-        if move in self.board.legal_moves:
-            # TODO: handle promotion and ep captures
-            self.robot.move(move.uci(), is_castling=self.board.is_castling(move))
-            self.board.push(move)
-            
+        self.state = self.BUSY
+        # TODO: handle promotion and ep captures
+        self.robot.move(move.uci(), is_castling=self.board.is_castling(move))
+        self.board.push(move)
+        
         print(move)
         print(self.board)
         print()
+
+        if self.board.is_game_over():
+            outcome = self.board.outcome()
+            print(f'game over: {outcome}')
+            self.quit_game()
+            return
+
+        self.set_awaiting_state()
         
-        
-    # def play_game(self):
-    #     '''Play a game, ending when the game is over or the user enters the "quit" command'''
-    #     while not self.board.is_game_over():
-    #         move = chess.Move.null
-        
-    #         if (self.board.turn and self.white_is_human) or (not self.board.turn and self.black_is_human):
-    #             move = self.get_human_move()
-    #             if self.game_over:
-    #                 print('game ended by user')
-    #                 return
-    #         else:
-    #             move = self.get_computer_move()
-        
-    #         if move in self.board.legal_moves:
-    #             # TODO: handle promotion and ep captures
-    #             self.robot.move(move.uci(), is_castling=self.board.is_castling(move))
-    #             self.board.push(move)
-                
-    #         print(move)
-    #         print(self.board)
-    #         print()
-            
-    #     outcome = self.board.outcome()
-    #     print(f'game over: {outcome}')
-    #     self.quitGame()
+    def quit(self):
+        print('closing program')
+        self.engine.quit()
+        sys.exit()
+    
 
 
 if __name__ == '__main__':
