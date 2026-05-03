@@ -1,5 +1,5 @@
-# from gpiozero import PWMLED
 import gpiozero
+import math
 import threading
 import time
 from main import GameManager, Command
@@ -138,12 +138,12 @@ class MyButton():
             
 class ToggleSwitch():
     '''Toggle switch with associated LED'''
-    BLINK_PERIOD = 0.5
-    BLINK_DC = 0.25
+    BLINK_PERIOD = 0.75
+    BLINK_DC = 0.5      # duty cycle (time off / total time)
 
     def __init__(self, sw_pin, led_pin, default_state=False):
         self.button = gpiozero.Button(sw_pin)
-        self.led = gpiozero.LED(led_pin)
+        self.led = gpiozero.PWMLED(led_pin)
         self.default_state = default_state
         self.blinking = False
         
@@ -163,11 +163,13 @@ class ToggleSwitch():
         if self.blinking:
             t = ((time.time() - self.blink_start_time) / self.BLINK_PERIOD) % 1
             if t < self.BLINK_DC:
-                state = not state
-        if state:
-            self.led.on()
+                theta = t / self.BLINK_DC * 2 * math.pi
+                val = (math.cos(theta) + 1) / 2
+            else:
+                val = 1
+            self.led.value = val if state else 1 - val
         else:
-            self.led.off()
+            self.led.value = 1 if state else 0
             
             
 class RotarySwitch():
