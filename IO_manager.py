@@ -57,15 +57,28 @@ class IO_Manager():
             # read pushbuttons
             for b in self.buttons:
                 val = b.update()
+                b.update_led()
                 if val != -1:
-                    self.command_queue.put(Command('button_press', val, time.time() + 0.1))
+                    self.command_queue.put(Command('button_press', val, time.time() + 1))
+
+    def set_game_state(self, playing):
+        '''Change led states based on whetehr a game is in progress'''
+        self.buttons[0].led_default = playing
+        if not playing:
+            # Only flash lights when a game is in progress
+            self.set_blinking(False, False)
+
+    def set_blinking(self, white=False, black=False):
+        '''Flash LEDs associated with the toggle switches'''
+        self.white_toggle.set_blinking(white)
+        self.black_toggle.set_blinking(black)
+
                 
 class KeyboardManager():
     def __init__(self, command_queue):
         self.command_queue = command_queue
     
     def update_loop(self):
-        # pass
         while(True):
             # if self.command_queue.empty()
             try:
@@ -77,7 +90,7 @@ class KeyboardManager():
         
    
 class MyButton():
-    '''Class for controlling a pushbutton with integrated LED indicator. val1 is a value retuned on a short press, fn2 on a long press. The LED is ltoggled while one of the functions is in progress'''
+    '''Class for controlling a pushbutton with integrated LED indicator. val1 is a value retuned on a short press, val2 on a long press. The LED is ltoggled while one of the functions is in progress'''
     def __init__(self, sw_pin, led_pin, val1, val2, led_default_state=False, long_press_threshold=0.5):
         self.button = gpiozero.Button(sw_pin)
         self.led = gpiozero.LED(led_pin)
@@ -89,22 +102,18 @@ class MyButton():
         self.press_detected = False    # indicate when a long press has been triggered but the button hasn't been released
         self.sw_press_time = 0
         
-        self.set_led(self.led_default)
+        self.update_led()
     
     def update(self):
         '''Read switch state and return val1 when a short press is detected, val2 when a long press is detected, and -1 otherwise'''
         if self.sw_state:
             duration = time.time() - self.sw_press_time
-            
-            # # retrun LED to default after the command finishes
-            # self.set_led(self.led_default)
 
             # button is released
             if not self.button.is_pressed:
                 short_press = not self.press_detected
                 self.sw_state = False
                 self.press_detected = False
-                self.set_led(self.led_default)
                 
                 # if the button wasn't held, register a short press
                 if short_press:
@@ -118,32 +127,43 @@ class MyButton():
             if self.button.is_pressed:
                 self.sw_state = True
                 self.sw_press_time = time.time()
-                # toggle LED when the button is pressed
-                self.set_led(not self.led_default)
         return -1
                 
-    def set_led(self, state):
-        if state:
-            self.led.on()
-        else:
+    def update_led(self):
+        if self.sw_state == self.led_default:
             self.led.off()
+        else:
+            self.led.on()
             
             
 class ToggleSwitch():
     '''Toggle switch with associated LED'''
+    BLINK_PERIOD = 0.5
+    BLINK_DC = 0.25
+
     def __init__(self, sw_pin, led_pin, default_state=False):
         self.button = gpiozero.Button(sw_pin)
         self.led = gpiozero.LED(led_pin)
         self.default_state = default_state
+        self.blinking = False
         
         self.read()
         
     def read(self):
         self.sw_state = self.button.is_pressed ^ self.default_state
-        self.set_led(self.sw_state)
+        self._set_led(self.sw_state)
         return self.sw_state
     
-    def set_led(self, state):
+    def set_blinking(self, blinkstate):
+        self.blinking = blinkstate
+        if blinkstate: self.blink_start_time = time.time()
+    
+    def _set_led(self, state):
+        # To blink, periodically invert led state
+        if self.blinking:
+            t = ((time.time() - self.blink_start_time) / self.BLINK_PERIOD) % 1
+            if t < self.BLINK_DC:
+                state = not state
         if state:
             self.led.on()
         else:

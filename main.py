@@ -54,11 +54,9 @@ class GameManager():
             except TimeoutError:
                 print(f'Failed to initialize engine ({i+1}/3)')
         self.board = None
-        # self.game_over = False
         
         self.command_queue = queue.Queue()
         
-        # self.game_in_progress = False   #TODO: redundant
         self.state = self.MENU
         # monitors switches/buttons and controls LEDs
         print('Initializing IO manager...')
@@ -114,6 +112,8 @@ class GameManager():
         print(f'Setting players: white={'cpu' if white else 'human'} black={'cpu' if black else 'human'}')
         self.white_is_cpu = white
         self.black_is_cpu = black
+        if self.state == self.AWAITING_PLAYER_MOVE or self.state == self.AWAITING_CPU_MOVE:
+            self.set_awaiting_state()
     
         
     def keyboard_input(self, user_input):
@@ -131,21 +131,9 @@ class GameManager():
             
         match cmd:
             case 'play':    # start a game, letting the user chose which side(s) to play
-                if self.state != self.MENU:
-                    print('\'play\' command is only allowed from the menu')
-                    return
-
-                # check that the board is set properly
-                if not robot.is_starting_position:
-                    print('\tboard is not in starting position (call \'setup\' to set up automatically or \'init\' to set up manually)')
-                    return
-                
-                white_is_human = 'w' in args
-                black_is_human = 'b' in args
-                self.configure_players(not white_is_human, not black_is_human)
-                # start the game
-                self.board = chess.Board()
-                self.set_awaiting_state()
+                self.white_is_cpu = not 'w' in args
+                self.black_is_cpu = not 'b' in args
+                self.start_game()
                 
             case 'resume':    # resume the game in progress, optionally changing sides
                 if self.state != self.MENU:
@@ -154,13 +142,9 @@ class GameManager():
                 if self.board is None:
                     print('\tno game in progress')
                     return
-                
-                # update which side(s) the computer plays
-                white_is_human = 'w' in args
-                black_is_human = 'b' in args
-                self.configure_players(not white_is_human, not black_is_human)
-                # reume the game
-                self.set_awaiting_state()
+                self.white_is_cpu = not 'w' in args
+                self.black_is_cpu = not 'b' in args
+                self.resume_game()
             
             case 'engine':    # set the strength of the engine (0-5)
                 level = int(args)
@@ -169,34 +153,18 @@ class GameManager():
                 else:
                     self.configure_engine(level) 
                 
-            case 'init':    # initialize the board state to the starting position after manually setting up
-                robot.initialize_position()
-                # self.game_in_progress = False
-                self.state = self.MENU
-            case 'setup':    # physically reset the board to the starting position
-                robot.setup_position('starting')
-                # quit any games in progress
-                self.quit_game()
-            case 'clear':    # physically remove all pieces from the board
-                robot.setup_position('empty')
-                # quit any games in progress
-                self.quit_game()
+            case 'init':
+                self.manual_setup('starting')
+            case 'setup':
+                self.setup('starting')
+            case 'clear':
+                self.setup('empty')
             case 'adjust':
-                old_state = self.state
-                self.state = self.BUSY
-                robot.adjust_pieces()
-                self.state = old_state
+                self.adjust_pieces()
             case 'home':
-                old_state = self.state
-                self.state = self.BUSY
-                robot.home()
-                self.state = old_state
+                self.home_axes()
             case 'pause':
-                if self.state == self.MENU:
-                    print('no game in progress')
-                else:
-                    # self.quit_game()
-                    self.state = self.MENU
+                self.pause_game()
             case 'exit':
                 self.quit()
             case _:
@@ -224,17 +192,112 @@ class GameManager():
     def button_press(self, button_id):
         #TODO
         print(f'button {button_id}')
+        
+        match button_id:
+            case 0: # start or stop game
+                if self.state == self.MENU:
+                    if self.board == None:
+                        self.start_game()
+                    else:
+                        self.resume_game()
+                elif self.state == self.AWAITING_PLAYER_MOVE or self.state == self.AWAITING_CPU_MOVE:
+                    self.pause_game()
+            case 1:
+                self.home_axes()
+            case 2:
+                self.manual_setup('starting')
+            case 3:
+                self.setup('starting')
+            case 4:
+                pass
+            case 5:
+                self.adjust_pieces()
+            case 6:
+                self.manual_setup('empty')
+            case 7:
+                self.setup('empty')
+            
+            case _:
+                raise(ValueError(f'Invalid button id: {button_id}'))
+
     
-        
-        
+    # UI commands ================================================
+    def start_game(self):
+        if self.state != self.MENU:
+            print('\'play\' command is only allowed from the menu')
+            return
+
+        # check that the board is set properly
+        if not robot.is_starting_position:
+            print('\tboard is not in starting position (call \'setup\' to set up automatically or \'init\' to set up manually)')
+            return
+        print('Starting new game')
+        # start the game
+        self.board = chess.Board()
+        self.set_awaiting_state()
+        self.IO.set_game_state(True)
+
+    def resume_game(self):
+        print('Resuming game')
+        self.set_awaiting_state()
+        self.IO.set_game_state(True)
+    
+    def pause_game(self):
+        if self.state == self.MENU:
+            print('no game in progress')
+        else:
+            print('Pausing game')
+            self.state = self.MENU
+            self.IO.set_game_state(False)
+
+    
     def quit_game(self):
+        print('Quitting game')
         self.board = None
         self.state = self.MENU
+        self.IO.set_game_state(False)
+
+    def home_axes(self):
+        print('Homing axes')
+        old_state = self.state
+        self.state = self.BUSY
+        robot.home()
+        self.state = old_state
+
+    def adjust_pieces(self):
+        print('Adjusting pieces')
+        old_state = self.state
+        self.state = self.BUSY
+        robot.adjust_pieces()
+        self.state = old_state
+
+    def setup(self, state):
+        ''''Physically reset the board to the starting position or clear the board'''
+        print(f'Setting up: {state}')
+        robot.setup_position(state)
+        # quit any games in progress
+        self.quit_game()
+
+    def manual_setup(self, state):
+        '''Initialize the board state after manually setting up'''
+        print(f'Manual setup: {state}')
+        robot.initialize_position(state)
+        # quit any games in progress
+        self.quit_game()
+
+
+    #=============================================================
 
     def set_awaiting_state(self):
         '''Set the current state to await a move from the engine or human player'''
         cpu_turn = self.white_is_cpu if self.board.turn else self.black_is_cpu
         self.state = self.AWAITING_CPU_MOVE if cpu_turn else self.AWAITING_PLAYER_MOVE
+
+        # flash indicator LEDs to indicate player's turn
+        if self.board.turn:
+            self.IO.set_blinking(True, False)
+        else:
+            self.IO.set_blinking(False, True)
     
 
     
