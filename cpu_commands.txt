@@ -2,7 +2,7 @@ Command format: [command] [arguments(optional)]
 	-Commands are not case sensitive.
 
 play: start a new game
-	-If the arguments contain 'w' or 'W', the user will play teh white side. Otehrwise, it is controlled by the engine. Likewise for 'b' and black.
+	-If the arguments contain 'w' or 'W', the user will play the white side. Otehrwise, it is controlled by the engine. Likewise for 'b' and black.
 	-A game can only be begun when the board is in the starting position (assumed to be the case at startup)
 	-During the game, the user will be prompted to enter moves in standard or long algebreic notation.
 	-Inputting 'pause' exits the game

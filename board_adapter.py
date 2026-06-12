@@ -80,7 +80,8 @@ class BoardAdapter():
         
         while self.waiting:
             if time.time() > stop_time:
-                print(f'\tTimeout after {timeout} secconds')
+                print(f'\tTimeout after {timeout} seconds')
+                self.waiting = False
                 return
             time.sleep(0.1)
         

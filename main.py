@@ -38,6 +38,13 @@ class GameManager():
         self.black_is_cpu = False
         self.cpu_time_limit = cpu_time_limit
         self.cpu_depth_limit = cpu_depth_limit
+
+        # monitors switches/buttons and controls LEDs
+        self.command_queue = queue.Queue()
+        print('Initializing IO manager...')
+        self.IO = IO_manager.IO_Manager(self.command_queue)
+        self.keyboard = IO_manager.KeyboardManager(self.command_queue)
+        print('\tSuccess')
         
         current_os = sys.platform
         if current_os == 'win32':
@@ -47,22 +54,17 @@ class GameManager():
         else:
             raise ValueError(f'OS "{current_os}" not recognized')
 
-        for i in range(3):
+        for i in range(5):
             try:
                 self.engine = chess.engine.SimpleEngine.popen_uci(self.engine_filepath, timeout=15)
+                print('Engine initialized')
                 break
             except TimeoutError:
-                print(f'Failed to initialize engine ({i+1}/3)')
-        self.board = None
-        
-        self.command_queue = queue.Queue()
+                print(f'Failed to initialize engine ({i+1}/5)')
+                
+        self.board = None    
         
         self.state = self.MENU
-        # monitors switches/buttons and controls LEDs
-        print('Initializing IO manager...')
-        self.IO = IO_manager.IO_Manager(self.command_queue)
-        self.keyboard = IO_manager.KeyboardManager(self.command_queue)
-        print('\tSuccess')
         
     
     def run(self):
@@ -334,12 +336,14 @@ class GameManager():
 
 if __name__ == '__main__':
     robot = BoardAdapter()
+    robot.await_response('ready')
     if robot.connection_error:
         print('Connection error: no board control')
-        
-    robot.await_response('ready')
+
+    manager = GameManager(robot)
+
     robot.home()
     robot.initialize_position()
     time.sleep(1)
     
-    GameManager(robot).run()
+    manager.run()

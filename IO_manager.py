@@ -59,7 +59,7 @@ class IO_Manager():
                 val = b.update()
                 b.update_led()
                 if val != -1:
-                    self.command_queue.put(Command('button_press', val, time.time() + 1))
+                    self.command_queue.put(Command('button_press', val, time.time() + 20))
 
     def set_game_state(self, playing):
         '''Change led states based on whetehr a game is in progress'''
